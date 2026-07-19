@@ -1,0 +1,296 @@
+import { dokployApi, dokployRestApi, DOKPLOY_URL } from '../config/dokploy';
+
+// ─────────────────────────────────────────────
+// PROJECTS
+// ─────────────────────────────────────────────
+
+export const getProjects = async () => {
+  try {
+    const { data } = await dokployApi.get('/project.all');
+    return data?.result?.data?.json || [];
+  } catch (error: any) {
+    console.error('Dokploy error getProjects:', error?.response?.data || error.message);
+    return [];
+  }
+};
+
+export const createProject = async (name: string, description: string = '') => {
+  try {
+    const { data } = await dokployApi.post('/project.create', { json: { name, description } });
+    return data?.result?.data?.json;
+  } catch (error: any) {
+    console.error('Dokploy error createProject:', error?.response?.data || error.message);
+    throw new Error('Failed to create project');
+  }
+};
+
+export const deleteProject = async (projectId: string) => {
+  try {
+    const { data } = await dokployRestApi.post('/project.remove', { projectId });
+    return data;
+  } catch (error: any) {
+    console.error('Dokploy error deleteProject:', error?.response?.data || error.message);
+    throw new Error('Failed to delete project');
+  }
+};
+
+// ─────────────────────────────────────────────
+// APPLICATIONS
+// ─────────────────────────────────────────────
+
+export const createApplication = async (projectId: string, environmentId: string, name: string, description: string = '') => {
+  try {
+    const { data } = await dokployApi.post('/application.create', { json: { projectId, environmentId, name, description } });
+    return data?.result?.data?.json;
+  } catch (error: any) {
+    console.error('Dokploy error createApplication:', error?.response?.data || error.message);
+    throw new Error('Failed to create application');
+  }
+};
+
+export const deleteApplication = async (applicationId: string) => {
+  try {
+    const { data } = await dokployRestApi.post('/application.delete', { applicationId });
+    return data;
+  } catch (error: any) {
+    console.error('Dokploy error deleteApplication:', error?.response?.data || error.message);
+    throw new Error('Failed to delete application');
+  }
+};
+
+export const deployApplication = async (applicationId: string) => {
+  try {
+    const { data } = await dokployApi.post('/application.deploy', { json: { applicationId } });
+    return data?.result?.data?.json;
+  } catch (error: any) {
+    console.error('Dokploy error deployApplication:', error?.response?.data || error.message);
+    throw new Error('Failed to deploy application');
+  }
+};
+
+export const redeployApplication = async (applicationId: string) => {
+  try {
+    const { data } = await dokployApi.post('/application.redeploy', { json: { applicationId } });
+    return data?.result?.data?.json;
+  } catch (error: any) {
+    console.error('Dokploy error redeployApplication:', error?.response?.data || error.message);
+    throw new Error('Failed to redeploy application');
+  }
+};
+
+export const stopApplication = async (applicationId: string) => {
+  try {
+    const { data } = await dokployApi.post('/application.stop', { json: { applicationId } });
+    return data?.result?.data?.json;
+  } catch (error: any) {
+    console.error('Dokploy error stopApplication:', error?.response?.data || error.message);
+    throw new Error('Failed to stop application');
+  }
+};
+
+export const startApplication = async (applicationId: string) => {
+  try {
+    const { data } = await dokployApi.post('/application.start', { json: { applicationId } });
+    return data?.result?.data?.json;
+  } catch (error: any) {
+    console.error('Dokploy error startApplication:', error?.response?.data || error.message);
+    throw new Error('Failed to start application');
+  }
+};
+
+export const updateApplication = async (applicationId: string, settings: Record<string, any>) => {
+  try {
+    const { data } = await dokployApi.post('/application.update', { json: { applicationId, ...settings } });
+    return data?.result?.data?.json;
+  } catch (error: any) {
+    console.error('Dokploy error updateApplication:', error?.response?.data || error.message);
+    throw new Error('Failed to update application settings');
+  }
+};
+
+// ─────────────────────────────────────────────
+// GITHUB
+// ─────────────────────────────────────────────
+
+export const getGithubProviders = async () => {
+  try {
+    const { data } = await dokployApi.get('/github.githubProviders');
+    return data?.result?.data?.json || [];
+  } catch (error: any) {
+    console.error('Dokploy error githubProviders:', error?.response?.data || error.message);
+    return [];
+  }
+};
+
+export const getGithubRepositories = async () => {
+  try {
+    const providers = await getGithubProviders();
+    if (!providers.length) return [];
+    const githubId = providers[0].githubId;
+    const inputPayload = JSON.stringify({ json: { githubId } });
+    const { data } = await dokployApi.get('/github.getGithubRepositories', {
+      params: { input: inputPayload }
+    });
+    return data?.result?.data?.json || [];
+  } catch (error: any) {
+    console.error('Dokploy error getGithubRepositories:', error?.response?.data || error.message);
+    return [];
+  }
+};
+
+export const getGithubBranches = async (repository: string) => {
+  try {
+    const providers = await getGithubProviders();
+    if (!providers.length) return [];
+    const githubId = providers[0].githubId;
+    const [owner, repo] = repository.split('/');
+    if (!owner || !repo) return [];
+    const inputPayload = JSON.stringify({ json: { githubId, owner, repo } });
+    const { data } = await dokployApi.get('/github.getGithubBranches', {
+      params: { input: inputPayload }
+    });
+    return data?.result?.data?.json || [];
+  } catch (error: any) {
+    console.error('Dokploy error getGithubBranches:', error?.response?.data || error.message);
+    return [];
+  }
+};
+
+export const saveGithubProvider = async (
+  applicationId: string,
+  repository: string,
+  branch: string,
+  buildType: string,
+  buildPath: string = '/'
+) => {
+  try {
+    const providers = await getGithubProviders();
+    if (!providers.length) throw new Error('No GitHub providers connected');
+    const githubId = providers[0].githubId;
+    const [owner, repoName] = repository.split('/');
+    const { data } = await dokployApi.post('/application.saveGithubProvider', {
+      json: { applicationId, githubId, owner, repository: repoName, branch, buildPath, buildType }
+    });
+    return data?.result?.data?.json;
+  } catch (error: any) {
+    console.error('Dokploy error saveGithubProvider:', error?.response?.data || error.message);
+    throw new Error('Failed to save GitHub provider');
+  }
+};
+
+// ─────────────────────────────────────────────
+// ENVIRONMENT
+// ─────────────────────────────────────────────
+
+export const saveEnv = async (applicationId: string, env: string) => {
+  try {
+    const { data } = await dokployApi.post('/application.saveEnv', { json: { applicationId, env } });
+    return data?.result?.data?.json;
+  } catch (error: any) {
+    console.error('Dokploy error saveEnv:', error?.response?.data || error.message);
+    throw new Error('Failed to save environment variables');
+  }
+};
+
+// ─────────────────────────────────────────────
+// DEPLOYMENTS & LOGS
+// ─────────────────────────────────────────────
+
+export const getDeployments = async (applicationId: string) => {
+  try {
+    const inputPayload = JSON.stringify({ json: { applicationId } });
+    const { data } = await dokployApi.get('/deployment.all', {
+      params: { input: inputPayload }
+    });
+    return data?.result?.data?.json || [];
+  } catch (error: any) {
+    // This endpoint may return 401 depending on API key permissions
+    console.error('Dokploy error getDeployments:', error?.response?.data?.error?.json?.message || error.message);
+    return [];
+  }
+};
+
+export const getLogs = async (applicationId: string) => {
+  try {
+    // First try to get deployments for this application
+    const deployments = await getDeployments(applicationId);
+    if (!deployments || deployments.length === 0) {
+      return [];
+    }
+    const latestDeployment = deployments[0];
+    const deploymentId = latestDeployment.deploymentId;
+    return getDeploymentLogs(deploymentId);
+  } catch (error: any) {
+    console.error('Dokploy error getLogs:', error?.response?.data || error.message);
+    return [];
+  }
+};
+
+export const getDeploymentLogs = async (deploymentId: string) => {
+  try {
+    const logInput = JSON.stringify({ json: { deploymentId } });
+    const logRes = await dokployApi.get('/deployment.readLogs', {
+      params: { input: logInput }
+    });
+    const rawLogs = logRes.data?.result?.data?.json;
+    if (typeof rawLogs !== 'string') return '';
+    return rawLogs;
+  } catch (error: any) {
+    console.error('Dokploy error getDeploymentLogs:', error?.response?.data || error.message);
+    return '';
+  }
+};
+
+export const getRuntimeLogs = async (applicationId: string) => {
+  try {
+    const logInput = JSON.stringify({ json: { applicationId } });
+    const logRes = await dokployApi.get('/application.readLogs', {
+      params: { input: logInput }
+    });
+    const rawLogs = logRes.data?.result?.data?.json;
+    if (typeof rawLogs !== 'string') return '';
+    return rawLogs;
+  } catch (error: any) {
+    console.error('Dokploy error getRuntimeLogs:', error?.response?.data || error.message);
+    return '';
+  }
+};
+
+// ─────────────────────────────────────────────
+// DOMAINS
+// ─────────────────────────────────────────────
+
+export const getDomains = async (applicationId: string) => {
+  try {
+    const inputPayload = JSON.stringify({ json: { applicationId } });
+    const { data } = await dokployApi.get('/domain.byApplicationId', {
+      params: { input: inputPayload }
+    });
+    return data?.result?.data?.json || [];
+  } catch (error: any) {
+    console.error('Dokploy error getDomains:', error?.response?.data || error.message);
+    return [];
+  }
+};
+
+export const createDomain = async (applicationId: string, host: string, https: boolean = true, port: number = 3000) => {
+  try {
+    const { data } = await dokployApi.post('/domain.create', {
+      json: { applicationId, host, https, port, certificateType: https ? 'letsencrypt' : 'none' }
+    });
+    return data?.result?.data?.json;
+  } catch (error: any) {
+    console.error('Dokploy error createDomain:', error?.response?.data || error.message);
+    throw new Error('Failed to create domain');
+  }
+};
+
+export const deleteDomain = async (domainId: string) => {
+  try {
+    const { data } = await dokployApi.post('/domain.delete', { json: { domainId } });
+    return data?.result?.data?.json;
+  } catch (error: any) {
+    console.error('Dokploy error deleteDomain:', error?.response?.data || error.message);
+    throw new Error('Failed to delete domain');
+  }
+};
