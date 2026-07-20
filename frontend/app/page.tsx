@@ -37,12 +37,14 @@ export default function LoginPage() {
 
       <div className="relative w-full max-w-sm">
         {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center mb-4">
-            <Image src="/logo.png" alt="Pluto" width={80} height={40} className="object-contain" />
+        <div className="flex items-center justify-center gap-8 mb-8">
+          <div className="flex h-32 w-32 items-center justify-center rounded-2xl overflow-hidden">
+            <Image src="/logo.png" alt="PLUTO" width={128} height={128} className="object-contain" />
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Pluto</h1>
-          <p className="text-sm text-zinc-500 mt-1">Deploy applications in seconds</p>
+          <div className="text-left">
+            <h1 className="text-5xl font-extrabold tracking-widest text-white font-sans uppercase leading-none">PLUTO</h1>
+            <p className="text-sm font-semibold tracking-wider text-zinc-400 uppercase mt-2.5">By Ginux Technologies</p>
+          </div>
         </div>
 
         {/* Card */}

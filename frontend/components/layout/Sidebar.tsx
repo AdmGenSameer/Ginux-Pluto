@@ -40,14 +40,14 @@ export function Sidebar() {
       )}
     >
       {/* Logo */}
-      <div className={cn('flex items-center gap-3 px-4 py-5 border-b border-white/5', collapsed && 'justify-center')}>
-        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg overflow-hidden">
-          <Image src="/logo.png" alt="Pluto" width={32} height={32} className="object-contain" />
+      <div className={cn('flex items-center gap-4 px-5 py-6 border-b border-white/5', collapsed ? 'justify-center py-5 px-2' : '')}>
+        <div className={cn('flex flex-shrink-0 items-center justify-center rounded-lg overflow-hidden transition-all duration-300', collapsed ? 'h-8 w-8' : 'h-16 w-16')}>
+          <Image src="/logo.png" alt="PLUTO" width={collapsed ? 32 : 64} height={collapsed ? 32 : 64} className="object-contain" />
         </div>
         {!collapsed && (
           <div className="min-w-0">
-            <span className="text-sm font-semibold tracking-tight text-white">Pluto</span>
-            <p className="text-[9px] text-zinc-500 leading-none mt-0.5">by Ginux Technologies</p>
+            <span className="text-xl font-extrabold tracking-widest text-white font-sans uppercase leading-none block">PLUTO</span>
+            <p className="text-[9px] font-medium tracking-wider text-zinc-500 uppercase mt-1">by Ginux</p>
           </div>
         )}
       </div>
@@ -112,12 +112,12 @@ export function Sidebar() {
 
         {/* User */}
         <div className={cn('flex items-center gap-3 rounded-lg px-3 py-2 mt-1', collapsed && 'justify-center')}>
-          <div className="h-7 w-7 flex-shrink-0 rounded-full overflow-hidden bg-[#111]">
-            <Image src="/logo.png" alt="Pluto" width={28} height={28} className="object-contain" />
+          <div className="h-8 w-8 flex-shrink-0 rounded-full overflow-hidden bg-[#111] flex items-center justify-center">
+            <Image src="/logo.png" alt="PLUTO" width={32} height={32} className="object-contain" />
           </div>
           {!collapsed && (
             <div className="min-w-0">
-              <p className="text-xs font-medium text-white truncate">Pluto</p>
+              <p className="text-xs font-extrabold tracking-wider text-white font-sans uppercase">PLUTO</p>
               <p className="text-[10px] text-zinc-500 truncate">admin</p>
             </div>
           )}
