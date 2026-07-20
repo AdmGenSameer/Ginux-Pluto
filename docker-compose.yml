@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   backend:
@@ -13,6 +13,16 @@ services:
       - DOKPLOY_URL=${DOKPLOY_URL}
       - DOKPLOY_TOKEN=${DOKPLOY_TOKEN}
     restart: unless-stopped
+    labels:
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.clouddeploy-pluto-backend.rule=Host(`bknd-api.ginux.dev`)
+      - traefik.http.routers.clouddeploy-pluto-backend.entrypoints=web
+      - traefik.http.services.clouddeploy-pluto-backend.loadbalancer.server.port=3001
+      - traefik.http.routers.clouddeploy-pluto-backend.service=clouddeploy-pluto-backend
+      - traefik.enable=true
+    networks:
+      - dokploy-network
+      - default
 
   frontend:
     build:
@@ -29,3 +39,17 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+    labels:
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.clouddeploy-pluto-frontend.rule=Host(`pluto.ginux.dev`)
+      - traefik.http.routers.clouddeploy-pluto-frontend.entrypoints=web
+      - traefik.http.services.clouddeploy-pluto-frontend.loadbalancer.server.port=3002
+      - traefik.http.routers.clouddeploy-pluto-frontend.service=clouddeploy-pluto-frontend
+      - traefik.enable=true
+    networks:
+      - dokploy-network
+      - default
+
+networks:
+  dokploy-network:
+    external: true
