@@ -21,6 +21,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3002
+      - HOSTNAME=0.0.0.0
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
     depends_on:
       - backend
