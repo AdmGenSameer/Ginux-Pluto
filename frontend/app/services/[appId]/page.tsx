@@ -4,54 +4,159 @@ import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
 import { getProjects, type DokployProject } from '@/services/projects';
-import { deployApplication, redeployApplication, stopApplication, startApplication, deleteApplication, saveProvider } from '@/services/applications';
+import {
+  deployApplication, redeployApplication, stopApplication,
+  startApplication, deleteApplication, saveProvider, updateApplicationSettings,
+} from '@/services/applications';
 import { getDeployments, getApplicationLogs, type Deployment, type LogEntry } from '@/services/deployments';
 import { saveEnv } from '@/services/environment';
-import { getDomains, createDomain, deleteDomain, type Domain } from '@/services/domains';
+import { getDomains, createDomain, deleteDomain } from '@/services/domains';
 import { getRepositories, getBranches } from '@/services/github';
 import { WorldClassLogs } from '@/components/logs/WorldClassLogs';
 import { EnvironmentVariables } from '@/components/services/EnvironmentVariables';
 import { DomainsList } from '@/components/services/DomainsList';
+import { DeploymentRow } from '@/components/services/DeploymentRow';
+import { ServiceTypeIcon } from '@/components/shared/ServiceTypeIcon';
 import { StatusBadge } from '@/components/shared/StatusBadge';
+import { TabNav } from '@/components/shared/TabNav';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 
 import Link from 'next/link';
 import {
-  ArrowLeft, Rocket, RefreshCw, Square, Play, Terminal, Save, Plus, Trash2,
-  Globe, Clock, GitBranch, GitFork, Settings, Loader2, Copy, Download, Search, Check
+  ArrowLeft, Rocket, RefreshCw, Square, Play, Terminal,
+  Globe, GitBranch, GitFork, Settings, Loader2, Copy,
+  Download, Search, ExternalLink, RotateCcw, Shield,
+  Server, Cpu, MemoryStick, HardDrive, Wifi, Clock,
+  CheckCircle2, XCircle, AlertCircle, ChevronRight,
+  Package, Layers, Activity, Zap, Radio,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+import { formatDistanceToNow } from 'date-fns';
 
-const TABS = ['Overview', 'Deployments', 'Logs', 'Environment', 'Domains', 'Settings'] as const;
-type Tab = typeof TABS[number];
+const TABS = [
+  { id: 'Overview',     label: 'Overview'  },
+  { id: 'Deployments',  label: 'Deployments' },
+  { id: 'Logs',         label: 'Logs'      },
+  { id: 'Environment',  label: 'Environment' },
+  { id: 'Domains',      label: 'Domains'   },
+  { id: 'Build',        label: 'Build'     },
+  { id: 'Runtime',      label: 'Runtime'   },
+  { id: 'Health',       label: 'Health'    },
+  { id: 'Settings',     label: 'Settings'  },
+] as const;
+type TabId = typeof TABS[number]['id'];
+
+// ── Helper Components ──────────────────────────────────────────────
+
+function InfoRow({ label, value, mono = false, copy = false, href }: {
+  label: string;
+  value?: string | null | React.ReactNode;
+  mono?: boolean;
+  copy?: boolean;
+  href?: string;
+}) {
+  const text = typeof value === 'string' ? value : undefined;
+  return (
+    <div className="flex items-start justify-between py-3 border-b border-white/5 last:border-0 gap-4">
+      <span className="text-xs font-medium text-zinc-500 min-w-[140px] flex-shrink-0">{label}</span>
+      <div className="flex items-center gap-2 min-w-0 text-right">
+        {href && text ? (
+          <a href={href} target="_blank" rel="noopener noreferrer"
+            className={cn('text-xs text-blue-400 hover:underline truncate', mono && 'font-mono')}>
+            {text}
+          </a>
+        ) : (
+          <span className={cn('text-xs text-white break-all', mono && 'font-mono')}>
+            {value ?? <span className="text-zinc-600">—</span>}
+          </span>
+        )}
+        {copy && text && (
+          <button onClick={() => { navigator.clipboard.writeText(text); toast.success('Copied!'); }}
+            className="text-zinc-600 hover:text-zinc-400 flex-shrink-0 transition-colors">
+            <Copy className="h-3 w-3" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SectionCard({ title, children, className }: { title?: string; children: React.ReactNode; className?: string }) {
+  return (
+    <div className={cn('rounded-xl border border-white/5 bg-white/[0.02] overflow-hidden', className)}>
+      {title && (
+        <div className="px-5 py-3.5 border-b border-white/5">
+          <h3 className="text-sm font-semibold text-white">{title}</h3>
+        </div>
+      )}
+      <div className="px-5">{children}</div>
+    </div>
+  );
+}
+
+function MetricCard({ label, value, icon: Icon, sub, color = 'text-zinc-400', comingSoon = false }: {
+  label: string; value: string; icon: React.ElementType; sub?: string; color?: string; comingSoon?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs text-zinc-500">{label}</span>
+        <Icon className={cn('h-4 w-4', color)} />
+      </div>
+      {comingSoon ? (
+        <span className="text-xs text-zinc-600">Coming soon</span>
+      ) : (
+        <>
+          <p className={cn('text-xl font-bold', color)}>{value}</p>
+          {sub && <p className="text-xs text-zinc-600 mt-1">{sub}</p>}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Main Page ──────────────────────────────────────────────────────
 
 export default function ServicePage() {
   const params = useParams();
   const appId = params.appId as string;
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<Tab>('Overview');
+
+  const [activeTab, setActiveTab] = useState<TabId>('Overview');
   const [showDeleteApp, setShowDeleteApp] = useState(false);
 
-  // Logs state
+  // Build settings state
+  const [repo, setRepo] = useState('');
+  const [branch, setBranch] = useState('');
+  const [buildType, setBuildType] = useState('nixpacks');
+  const [buildPath, setBuildPath] = useState('/');
+  const [port, setPort] = useState('');
+  const [startCmd, setStartCmd] = useState('');
+  const [buildCmd, setBuildCmd] = useState('');
+  const [autoDeploy, setAutoDeploy] = useState(false);
+  const [settingsInit, setSettingsInit] = useState(false);
+
+  // Health check state
+  const [healthUrl, setHealthUrl] = useState('/health');
+  const [healthPort, setHealthPort] = useState('');
+  const [healthInterval, setHealthInterval] = useState('30');
+  const [healthTimeout, setHealthTimeout] = useState('10');
+  const [healthRetries, setHealthRetries] = useState('3');
+
+  // Log state
   const [logSearch, setLogSearch] = useState('');
   const [autoscroll, setAutoscroll] = useState(true);
   const logRef = useRef<HTMLDivElement>(null);
 
-  // Settings state
-  const [settingsRepo, setSettingsRepo] = useState('');
-  const [settingsBranch, setSettingsBranch] = useState('');
-  const [settingsBuildType, setSettingsBuildType] = useState('nixpacks');
-  const [settingsBuildPath, setSettingsBuildPath] = useState('/');
-  const [settingsAutoInit, setSettingsAutoInit] = useState(false);
-
-  // Data
+  // Queries
   const { data: projects, isLoading: projectsLoading } = useQuery({
     queryKey: ['projects'],
     queryFn: getProjects,
     refetchInterval: 15000,
   });
 
-  const { data: deployments, isLoading: deploymentsLoading } = useQuery({
+  const { data: deployments } = useQuery({
     queryKey: ['deployments', appId],
     queryFn: () => getDeployments(appId),
     enabled: activeTab === 'Deployments',
@@ -65,7 +170,7 @@ export default function ServicePage() {
     refetchInterval: activeTab === 'Logs' ? 5000 : false,
   });
 
-  const { data: domains, isLoading: domainsLoading } = useQuery({
+  const { data: domains } = useQuery({
     queryKey: ['domains', appId],
     queryFn: () => getDomains(appId),
     enabled: activeTab === 'Domains',
@@ -74,34 +179,34 @@ export default function ServicePage() {
   const { data: repositories } = useQuery({
     queryKey: ['repositories'],
     queryFn: getRepositories,
-    enabled: activeTab === 'Settings',
+    enabled: activeTab === 'Build',
   });
 
   const { data: branches } = useQuery({
-    queryKey: ['branches', settingsRepo],
-    queryFn: () => getBranches(settingsRepo),
-    enabled: !!settingsRepo && activeTab === 'Settings',
+    queryKey: ['branches', repo],
+    queryFn: () => getBranches(repo),
+    enabled: !!repo && activeTab === 'Build',
   });
 
-  // Find app from project hierarchy
+  // Derived data
   const app = projects?.flatMap((p: DokployProject) =>
     p.environments?.flatMap(e => e.applications ?? []) ?? []
   ).find((a: any) => a.applicationId === appId);
 
   const project = projects?.find((p: DokployProject) =>
-    p.environments?.some(e => e.applications?.some(a => a.applicationId === appId))
+    p.environments?.some(e => e.applications?.some((a: any) => a.applicationId === appId))
   );
 
   // Init settings from app data
   useEffect(() => {
-    if (app && !settingsAutoInit) {
-      setSettingsRepo(app.repository ?? '');
-      setSettingsBranch(app.branch ?? '');
-      setSettingsBuildType(app.buildType ?? 'nixpacks');
-      setSettingsBuildPath(app.buildPath ?? '/');
-      setSettingsAutoInit(true);
+    if (app && !settingsInit) {
+      setRepo(app.repository ?? '');
+      setBranch(app.branch ?? '');
+      setBuildType(app.buildType ?? 'nixpacks');
+      setBuildPath(app.buildPath ?? '/');
+      setSettingsInit(true);
     }
-  }, [app]);
+  }, [app, settingsInit]);
 
   // Autoscroll logs
   useEffect(() => {
@@ -111,44 +216,84 @@ export default function ServicePage() {
   }, [logs, autoscroll]);
 
   // Mutations
-  const deployMut = useMutation({ mutationFn: () => deployApplication(appId), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['projects'] }); toast.success('Deployment started'); }, onError: () => toast.error('Deploy failed') });
-  const redeployMut = useMutation({ mutationFn: () => redeployApplication(appId), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['projects'] }); toast.success('Redeploy started'); }, onError: () => toast.error('Redeploy failed') });
-  const stopMut = useMutation({ mutationFn: () => stopApplication(appId), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['projects'] }); toast.success('Application stopped'); }, onError: () => toast.error('Stop failed') });
-  const startMut = useMutation({ mutationFn: () => startApplication(appId), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['projects'] }); toast.success('Application started'); }, onError: () => toast.error('Start failed') });
-  const deleteMut = useMutation({ mutationFn: () => deleteApplication(appId), onSuccess: () => { toast.success('Application deleted'); window.location.href = '/applications'; }, onError: () => toast.error('Delete failed — check API key permissions') });
-  const saveEnvMut = useMutation({ mutationFn: (env: string) => saveEnv(appId, env), onError: () => toast.error('Failed to save env') });
-  const saveProviderMut = useMutation({ mutationFn: () => saveProvider(appId, { repository: settingsRepo, branch: settingsBranch, buildType: settingsBuildType as any, buildPath: settingsBuildPath }), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['projects'] }); toast.success('Settings saved'); }, onError: () => toast.error('Failed to save settings') });
+  const deployMut = useMutation({
+    mutationFn: () => deployApplication(appId),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['projects'] }); toast.success('Deployment triggered'); },
+    onError: () => toast.error('Deploy failed'),
+  });
+  const redeployMut = useMutation({
+    mutationFn: () => redeployApplication(appId),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['projects'] }); toast.success('Redeploy started'); },
+    onError: () => toast.error('Redeploy failed'),
+  });
+  const stopMut = useMutation({
+    mutationFn: () => stopApplication(appId),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['projects'] }); toast.success('Service stopped'); },
+    onError: () => toast.error('Stop failed'),
+  });
+  const startMut = useMutation({
+    mutationFn: () => startApplication(appId),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['projects'] }); toast.success('Service started'); },
+    onError: () => toast.error('Start failed'),
+  });
+  const deleteMut = useMutation({
+    mutationFn: () => deleteApplication(appId),
+    onSuccess: () => { toast.success('Service deleted'); window.location.href = project ? `/projects/${project.projectId}` : '/projects'; },
+    onError: () => toast.error('Delete failed'),
+  });
+  const saveProviderMut = useMutation({
+    mutationFn: () => saveProvider(appId, { repository: repo, branch, buildType: buildType as any, buildPath }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['projects'] }); toast.success('Build settings saved'); },
+    onError: () => toast.error('Failed to save settings'),
+  });
+  const saveEnvMut = useMutation({
+    mutationFn: (env: string) => saveEnv(appId, env),
+    onSuccess: () => toast.success('Environment variables saved'),
+    onError: () => toast.error('Failed to save env vars'),
+  });
+  const addDomainMut = useMutation({
+    mutationFn: (payload: { host: string; https: boolean; port: number }) => createDomain(appId, payload),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['domains', appId] }); toast.success('Domain added'); },
+    onError: () => toast.error('Failed to add domain'),
+  });
+  const removeDomainMut = useMutation({
+    mutationFn: (domainId: string) => deleteDomain(domainId),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['domains', appId] }); toast.success('Domain removed'); },
+    onError: () => toast.error('Failed to remove domain'),
+  });
 
-  const filteredLogs = (logs ?? []).filter((l: LogEntry) =>
-    !logSearch || l.message.toLowerCase().includes(logSearch.toLowerCase())
-  );
+  const isRunning = app?.applicationStatus === 'running' || app?.applicationStatus === 'done';
+  const isBuilding = app?.applicationStatus === 'building';
 
   const downloadLogs = () => {
     const content = (logs ?? []).map((l: LogEntry) => l.message).join('\n');
     const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${app?.name ?? 'app'}-logs.txt`;
-    a.click();
+    const a = document.createElement('a'); a.href = url;
+    a.download = `${app?.name ?? 'service'}-logs.txt`; a.click();
   };
 
   const copyLogs = () => {
-    const content = (logs ?? []).map((l: LogEntry) => l.message).join('\n');
-    navigator.clipboard.writeText(content);
-    toast.success('Logs copied to clipboard');
+    navigator.clipboard.writeText((logs ?? []).map((l: LogEntry) => l.message).join('\n'));
+    toast.success('Logs copied');
   };
 
   if (projectsLoading) {
     return (
-      <div className="p-6 md:p-8">
-        <div className="animate-pulse space-y-4">
-          <div className="h-5 w-40 rounded bg-white/5" />
-          <div className="h-8 w-56 rounded bg-white/5" />
+      <div className="flex flex-col">
+        <div className="px-6 py-6 border-b border-white/5">
+          <div className="h-4 w-32 rounded bg-white/5 animate-pulse mb-4" />
+          <div className="h-7 w-56 rounded bg-white/5 animate-pulse mb-3" />
           <div className="flex gap-2">
-            {[1,2,3,4,5].map(i => <div key={i} className="h-9 w-20 rounded bg-white/5" />)}
+            {[1,2,3,4].map(i => <div key={i} className="h-8 w-20 rounded bg-white/5 animate-pulse" />)}
           </div>
-          <div className="h-64 rounded-xl bg-white/[0.02] border border-white/5" />
+        </div>
+        <div className="flex gap-1 px-6 border-b border-white/5">
+          {[1,2,3,4,5].map(i => <div key={i} className="h-10 w-20 rounded bg-white/5 animate-pulse my-2" />)}
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="h-40 rounded-xl bg-white/[0.02] border border-white/5 animate-pulse" />
+          <div className="h-40 rounded-xl bg-white/[0.02] border border-white/5 animate-pulse" />
         </div>
       </div>
     );
@@ -157,294 +302,600 @@ export default function ServicePage() {
   if (!app) {
     return (
       <div className="p-8 text-center">
-        <p className="text-zinc-500">Service not found</p>
-        <Link href="/applications" className="text-blue-400 text-sm hover:underline mt-2 inline-block">
-          Back to Applications
-        </Link>
+        <p className="text-zinc-500 mb-3">Service not found</p>
+        <Link href="/projects" className="text-sm text-blue-400 hover:underline">← Back to Projects</Link>
       </div>
     );
   }
 
-  return (
-    <div className="p-6 md:p-8 max-w-5xl mx-auto">
-      {/* Back nav */}
-      {project && (
-        <Link href={`/projects/${project.projectId}`} className="inline-flex items-center gap-2 text-sm text-zinc-500 hover:text-white transition-colors mb-6">
-          <ArrowLeft className="h-3.5 w-3.5" />
-          {project.name}
-        </Link>
-      )}
+  // After the !app guard above, app is guaranteed defined
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+  const safeApp = app!;
 
-      {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <div className="flex items-center gap-3 mb-1">
-            <h1 className="text-xl font-bold text-white">{app.name}</h1>
-            <StatusBadge status={app.applicationStatus} />
+  // ── Tab Contents ────────────────────────────────────────────────────
+
+  function renderOverview() {
+    return (
+      <div className="p-6 max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left: Info */}
+        <div className="lg:col-span-2 space-y-4">
+          {/* Health banner */}
+          <div className={cn(
+            'flex items-center gap-3 rounded-xl border px-4 py-3',
+            isRunning ? 'border-emerald-500/20 bg-emerald-500/5' :
+            isBuilding ? 'border-blue-500/20 bg-blue-500/5' :
+            safeApp.applicationStatus === 'error' ? 'border-red-500/20 bg-red-500/5' :
+            'border-white/5 bg-white/[0.02]'
+          )}>
+            {isRunning ? <CheckCircle2 className="h-4 w-4 text-emerald-400 flex-shrink-0" /> :
+             isBuilding ? <Loader2 className="h-4 w-4 text-blue-400 animate-spin flex-shrink-0" /> :
+             safeApp.applicationStatus === 'error' ? <XCircle className="h-4 w-4 text-red-400 flex-shrink-0" /> :
+             <AlertCircle className="h-4 w-4 text-zinc-400 flex-shrink-0" />}
+            <div>
+              <p className={cn('text-sm font-medium',
+                isRunning ? 'text-emerald-400' :
+                isBuilding ? 'text-blue-400' :
+                safeApp.applicationStatus === 'error' ? 'text-red-400' :
+                'text-zinc-400'
+              )}>
+                {isRunning ? 'Service is running' :
+                 isBuilding ? 'Build in progress' :
+                 safeApp.applicationStatus === 'error' ? 'Service has an error' :
+                 `Service is ${safeApp.applicationStatus}`}
+              </p>
+              {safeApp.applicationStatus === 'error' && (
+                <p className="text-xs text-red-300/70 mt-0.5">Check the Logs tab for details.</p>
+              )}
+            </div>
           </div>
-          {app.repository && (
-            <p className="text-sm text-zinc-500 flex items-center gap-1.5">
-              <GitFork className="h-3.5 w-3.5" />
-              {app.repository}
-              {app.branch && <span className="flex items-center gap-1"><GitBranch className="h-3 w-3" />{app.branch}</span>}
-            </p>
-          )}
+
+          {/* Application details */}
+          <SectionCard title="Application">
+            <InfoRow label="Name" value={safeApp.name} />
+            <InfoRow label="Status" value={<StatusBadge status={safeApp.applicationStatus} />} />
+            <InfoRow label="Repository" value={safeApp.repository} mono copy href={safeApp.repository ? `https://github.com/${safeApp.repository}` : undefined} />
+            <InfoRow label="Branch" value={safeApp.branch} mono />
+            <InfoRow label="Build Type" value={safeApp.buildType ?? '—'} />
+            <InfoRow label="Build Path" value={safeApp.buildPath ?? '/'} mono />
+            <InfoRow label="Auto Deploy" value={safeApp.buildType ? 'Enabled' : 'Disabled'} />
+          </SectionCard>
+
+          {/* Runtime details */}
+          <SectionCard title="Runtime">
+            <InfoRow label="Environment" value="Production" />
+            <InfoRow label="Port" value={port || '—'} />
+            <InfoRow label="Start Command" value={startCmd || '—'} mono />
+            <InfoRow label="Build Command" value={buildCmd || '—'} mono />
+          </SectionCard>
+        </div>
+
+        {/* Right: Quick actions */}
+        <div className="space-y-4">
+          <SectionCard title="Quick Actions">
+            <div className="py-3 space-y-2">
+              <button
+                onClick={() => deployMut.mutate()}
+                disabled={deployMut.isPending || isBuilding}
+                className="w-full flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-3 py-2.5 text-sm font-medium text-white transition-colors"
+              >
+                {deployMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}
+                Deploy
+              </button>
+              <button
+                onClick={() => redeployMut.mutate()}
+                disabled={redeployMut.isPending}
+                className="w-full flex items-center gap-2 rounded-lg border border-white/8 hover:bg-white/5 disabled:opacity-50 px-3 py-2.5 text-sm font-medium text-zinc-300 transition-colors"
+              >
+                {redeployMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                Redeploy
+              </button>
+              {isRunning ? (
+                <button
+                  onClick={() => stopMut.mutate()}
+                  disabled={stopMut.isPending}
+                  className="w-full flex items-center gap-2 rounded-lg border border-white/8 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400 disabled:opacity-50 px-3 py-2.5 text-sm font-medium text-zinc-300 transition-colors"
+                >
+                  {stopMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />}
+                  Stop
+                </button>
+              ) : (
+                <button
+                  onClick={() => startMut.mutate()}
+                  disabled={startMut.isPending}
+                  className="w-full flex items-center gap-2 rounded-lg border border-white/8 hover:bg-emerald-500/10 hover:border-emerald-500/30 hover:text-emerald-400 disabled:opacity-50 px-3 py-2.5 text-sm font-medium text-zinc-300 transition-colors"
+                >
+                  {startMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                  Start
+                </button>
+              )}
+              <button
+                onClick={() => setActiveTab('Logs')}
+                className="w-full flex items-center gap-2 rounded-lg border border-white/8 hover:bg-white/5 px-3 py-2.5 text-sm font-medium text-zinc-300 transition-colors"
+              >
+                <Terminal className="h-4 w-4" />
+                View Logs
+              </button>
+              <button
+                onClick={() => setActiveTab('Domains')}
+                className="w-full flex items-center gap-2 rounded-lg border border-white/8 hover:bg-white/5 px-3 py-2.5 text-sm font-medium text-zinc-300 transition-colors"
+              >
+                <Globe className="h-4 w-4" />
+                Manage Domains
+              </button>
+            </div>
+          </SectionCard>
+
+          {/* Deployment summary */}
+          <SectionCard title="Last Deployment">
+            <div className="py-3 space-y-2">
+              {safeApp.createdAt ? (
+                <>
+                  <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                    <Clock className="h-3 w-3 text-zinc-500" />
+                    {formatDistanceToNow(new Date(safeApp.createdAt), { addSuffix: true })}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs text-zinc-500">
+                    <GitBranch className="h-3 w-3" />
+                    {safeApp.branch ?? '—'}
+                  </div>
+                </>
+              ) : (
+                <p className="text-xs text-zinc-600">No deployments yet</p>
+              )}
+            </div>
+          </SectionCard>
         </div>
       </div>
+    );
+  }
 
-      {/* Action bar */}
-      <div className="flex flex-wrap items-center gap-2 mb-6 p-3 rounded-xl border border-white/5 bg-white/[0.02]">
-        <button
-          onClick={() => deployMut.mutate()}
-          disabled={deployMut.isPending}
-          className="flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-3 py-1.5 text-xs font-medium text-white transition-colors"
-        >
-          {deployMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Rocket className="h-3.5 w-3.5" />}
-          Deploy
-        </button>
-        <button
-          onClick={() => redeployMut.mutate()}
-          disabled={redeployMut.isPending}
-          className="flex items-center gap-1.5 rounded-lg border border-white/10 hover:bg-white/5 disabled:opacity-50 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${redeployMut.isPending ? 'animate-spin' : ''}`} />
-          Redeploy
-        </button>
-        <button
-          onClick={() => stopMut.mutate()}
-          disabled={stopMut.isPending}
-          className="flex items-center gap-1.5 rounded-lg border border-white/10 hover:bg-white/5 disabled:opacity-50 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors"
-        >
-          <Square className="h-3.5 w-3.5" />
-          Stop
-        </button>
-        <button
-          onClick={() => startMut.mutate()}
-          disabled={startMut.isPending}
-          className="flex items-center gap-1.5 rounded-lg border border-white/10 hover:bg-white/5 disabled:opacity-50 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors"
-        >
-          <Play className="h-3.5 w-3.5" />
-          Start
-        </button>
-        <Link
-          href={`/services/${appId}/logs`}
-          className="flex items-center gap-1.5 rounded-lg border border-white/10 hover:bg-white/5 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors"
-        >
-          <Terminal className="h-3.5 w-3.5" />
-          Logs
-        </Link>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-1 border-b border-white/5 mb-6 overflow-x-auto">
-        {TABS.map((tab) => 
-          tab === 'Logs' ? (
-            <Link
-              key={tab}
-              href={`/services/${appId}/logs`}
-              className="px-4 py-2 text-sm font-medium transition-colors border-b-2 whitespace-nowrap border-transparent text-zinc-500 hover:text-white"
-            >
-              {tab}
-            </Link>
-          ) : (
+  function renderDeployments() {
+    const deps = (deployments ?? []) as Deployment[];
+    return (
+      <div className="p-6 max-w-5xl mx-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold text-white">Deployment History</h2>
+          <button
+            onClick={() => queryClient.invalidateQueries({ queryKey: ['deployments', appId] })}
+            className="h-8 w-8 flex items-center justify-center rounded-lg border border-white/8 text-zinc-400 hover:text-white hover:bg-white/5 transition-colors"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        {deps.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center rounded-xl border border-white/5 bg-white/[0.02]">
+            <Rocket className="h-8 w-8 text-zinc-600 mb-3" />
+            <p className="text-sm font-medium text-zinc-400">No deployments yet</p>
+            <p className="text-xs text-zinc-600 mt-1">Trigger your first deployment to see history here.</p>
             <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${
-                activeTab === tab
-                  ? 'border-blue-500 text-white'
-                  : 'border-transparent text-zinc-500 hover:text-white'
-              }`}
+              onClick={() => deployMut.mutate()}
+              className="mt-4 flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-500 px-4 py-2 text-sm font-medium text-white transition-colors"
             >
-              {tab}
+              <Rocket className="h-3.5 w-3.5" />
+              Deploy Now
             </button>
-          )
+          </div>
+        ) : (
+          <div className="rounded-xl border border-white/5 bg-white/[0.02] overflow-hidden">
+            {deps.map((d, i) => (
+              <DeploymentRow
+                key={d.deploymentId}
+                deployment={d}
+                isLast={i === deps.length - 1}
+                onViewLogs={() => setActiveTab('Logs')}
+                onRedeploy={() => redeployMut.mutate()}
+              />
+            ))}
+          </div>
         )}
       </div>
+    );
+  }
 
-      {/* ── Overview ── */}
-      {activeTab === 'Overview' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="rounded-xl border border-white/5 bg-white/[0.02] p-5">
-            <p className="text-xs text-zinc-500 uppercase tracking-wider mb-3">Application Info</p>
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between"><span className="text-zinc-500">Name</span><span className="text-white">{app.name}</span></div>
-              <div className="flex justify-between"><span className="text-zinc-500">Status</span><StatusBadge status={app.applicationStatus} /></div>
-              <div className="flex justify-between"><span className="text-zinc-500">Project</span><span className="text-white">{project?.name}</span></div>
-              <div className="flex justify-between"><span className="text-zinc-500">Build Type</span><span className="text-white">{app.buildType || '—'}</span></div>
-              <div className="flex justify-between"><span className="text-zinc-500">Application ID</span><span className="text-zinc-400 text-xs font-mono truncate max-w-36">{app.applicationId}</span></div>
-            </div>
+  function renderLogs() {
+    return (
+      <div className="flex flex-col h-full">
+        {/* Log toolbar */}
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-white/5 bg-white/[0.01]">
+          <div className="relative flex-1 max-w-xs">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-zinc-500" />
+            <input
+              value={logSearch}
+              onChange={e => setLogSearch(e.target.value)}
+              placeholder="Search logs..."
+              className="w-full rounded-md border border-white/8 bg-white/5 pl-8 pr-3 py-1.5 text-xs text-white placeholder:text-zinc-600 outline-none focus:border-blue-500/50"
+            />
           </div>
-          <div className="rounded-xl border border-white/5 bg-white/[0.02] p-5">
-            <p className="text-xs text-zinc-500 uppercase tracking-wider mb-3">Repository</p>
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between"><span className="text-zinc-500">Repository</span><span className="text-white truncate max-w-40">{app.repository || '—'}</span></div>
-              <div className="flex justify-between"><span className="text-zinc-500">Branch</span><span className="text-white">{app.branch || '—'}</span></div>
-              <div className="flex justify-between"><span className="text-zinc-500">Build Path</span><span className="text-white">{app.buildPath || '/'}</span></div>
-            </div>
-          </div>
+          <button
+            onClick={() => setAutoscroll(v => !v)}
+            className={cn('flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
+              autoscroll ? 'bg-blue-500/15 text-blue-400' : 'text-zinc-500 hover:text-white border border-white/8'
+            )}
+          >
+            <Activity className="h-3 w-3" />
+            Auto-scroll
+          </button>
+          <button onClick={copyLogs} className="flex items-center gap-1.5 rounded-md border border-white/8 px-2.5 py-1.5 text-xs text-zinc-400 hover:text-white transition-colors">
+            <Copy className="h-3 w-3" /> Copy
+          </button>
+          <button onClick={downloadLogs} className="flex items-center gap-1.5 rounded-md border border-white/8 px-2.5 py-1.5 text-xs text-zinc-400 hover:text-white transition-colors">
+            <Download className="h-3 w-3" /> Download
+          </button>
         </div>
-      )}
-
-      {/* ── Deployments ── */}
-      {activeTab === 'Deployments' && (
-        <div>
-          {deploymentsLoading ? (
-            <div className="space-y-2">
-              {[1,2,3,4].map(i => <div key={i} className="h-14 animate-pulse rounded-xl bg-white/[0.02] border border-white/5" />)}
-            </div>
-          ) : !deployments?.length ? (
-            <div className="text-center py-16 text-zinc-500">
-              <Clock className="h-8 w-8 mx-auto mb-3 text-zinc-700" />
-              <p className="text-sm">No deployments yet</p>
-              <p className="text-xs mt-1">Trigger a deployment to see history here</p>
-            </div>
-          ) : (
-            <div className="rounded-xl border border-white/5 overflow-hidden">
-              <div className="grid grid-cols-12 gap-3 px-5 py-2.5 text-xs font-medium text-zinc-500 border-b border-white/5">
-                <div className="col-span-3">Status</div>
-                <div className="col-span-4">Deployment ID</div>
-                <div className="col-span-3">Started</div>
-                <div className="col-span-2">Duration</div>
-              </div>
-              {deployments.map((d: Deployment, idx: number) => {
-                const started = d.startedAt ? new Date(d.startedAt) : null;
-                const finished = d.finishedAt ? new Date(d.finishedAt) : null;
-                const duration = started && finished ? Math.round((finished.getTime() - started.getTime()) / 1000) : null;
-                return (
-                  <div key={d.deploymentId} className={`grid grid-cols-12 gap-3 items-center px-5 py-3.5 ${idx < deployments.length - 1 ? 'border-b border-white/5' : ''} hover:bg-white/[0.02] transition-colors`}>
-                    <div className="col-span-3"><StatusBadge status={d.status} /></div>
-                    <div className="col-span-4 font-mono text-xs text-zinc-400 truncate">{d.deploymentId}</div>
-                    <div className="col-span-3 text-xs text-zinc-500">{started ? started.toLocaleString() : '—'}</div>
-                    <div className="col-span-2 text-xs text-zinc-500">{duration !== null ? `${duration}s` : '—'}</div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+        <div className="flex-1 overflow-hidden">
+          <WorldClassLogs
+              appId={appId}
+              appName={safeApp.name}
+              projectName={project?.name ?? ''}
+              repoFullName={safeApp.repository ?? ''}
+            />
         </div>
-      )}
+      </div>
+    );
+  }
 
-      {/* ── Environment Variables ── */}
-      {activeTab === 'Environment' && (
-        <EnvironmentVariables
-          initialEnv={app.env || ''}
-          onSave={async (env) => {
-            await saveEnvMut.mutateAsync(env);
-            queryClient.invalidateQueries({ queryKey: ['projects'] });
-          }}
-          isPending={saveEnvMut.isPending}
-        />
-      )}
-
-      {/* ── Domains ── */}
-      {activeTab === 'Domains' && (
-        <DomainsList
-          domains={domains || []}
-          isLoading={domainsLoading}
-          onAdd={async (payload) => {
-            await createDomain(appId, payload);
-            queryClient.invalidateQueries({ queryKey: ['domains', appId] });
-          }}
-          onDelete={async (id) => {
-            await deleteDomain(id);
-            queryClient.invalidateQueries({ queryKey: ['domains', appId] });
-          }}
-          isAdding={false}
-        />
-      )}
-
-      {/* ── Settings ── */}
-      {activeTab === 'Settings' && (
-        <div className="space-y-6">
-          {/* Provider settings */}
-          <div className="rounded-xl border border-white/5 bg-white/[0.02] p-5">
-            <p className="text-sm font-semibold text-white mb-4">Provider Settings</p>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Repository</label>
-                <select
-                  value={settingsRepo}
-                  onChange={(e) => setSettingsRepo(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-[#111] px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500 transition-all"
-                >
-                  <option value="">Select repository</option>
-                  {(repositories ?? []).map((r: any) => (
-                    <option key={r.id || r.full_name} value={r.full_name}>{r.full_name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-zinc-400 mb-1.5">Branch</label>
-                  <select
-                    value={settingsBranch}
-                    onChange={(e) => setSettingsBranch(e.target.value)}
-                    className="w-full rounded-lg border border-white/10 bg-[#111] px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500 transition-all"
-                  >
-                    <option value="">Select branch</option>
-                    {(branches ?? []).map((b: any) => (
-                      <option key={b.name} value={b.name}>{b.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-zinc-400 mb-1.5">Build Type</label>
-                  <select
-                    value={settingsBuildType}
-                    onChange={(e) => setSettingsBuildType(e.target.value)}
-                    className="w-full rounded-lg border border-white/10 bg-[#111] px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500 transition-all"
-                  >
-                    <option value="nixpacks">Nixpacks (Automatic)</option>
-                    <option value="dockerfile">Dockerfile</option>
-                    <option value="heroku">Heroku Buildpacks</option>
-                    <option value="paketo">Paketo Buildpacks</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Build Path</label>
-                <input
-                  value={settingsBuildPath}
-                  onChange={(e) => setSettingsBuildPath(e.target.value)}
-                  placeholder="/"
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder:text-zinc-600 outline-none focus:border-blue-500 transition-all"
-                />
-              </div>
-            </div>
-            <div className="flex justify-end mt-4">
-              <button
-                onClick={() => saveProviderMut.mutate()}
-                disabled={!settingsRepo || !settingsBranch || saveProviderMut.isPending}
-                className="flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-2 text-xs font-medium text-white transition-colors"
+  function renderBuild() {
+    return (
+      <div className="p-6 max-w-3xl mx-auto space-y-6">
+        <SectionCard title="Source">
+          <div className="py-4 space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1.5">Repository</label>
+              <select
+                value={repo}
+                onChange={e => setRepo(e.target.value)}
+                className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50 transition-all"
               >
-                {saveProviderMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                Save Settings
+                <option value="">Select repository...</option>
+                {(repositories ?? []).map((r: any) => (
+                  <option key={r.name} value={r.full_name ?? r.name}>{r.full_name ?? r.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1.5">Branch</label>
+              <select
+                value={branch}
+                onChange={e => setBranch(e.target.value)}
+                className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50 transition-all"
+              >
+                <option value="">Select branch...</option>
+                {(branches ?? []).map((b: any) => (
+                  <option key={b.name} value={b.name}>{b.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Build Configuration">
+          <div className="py-4 space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1.5">Build Type</label>
+              <select
+                value={buildType}
+                onChange={e => setBuildType(e.target.value)}
+                className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50 transition-all"
+              >
+                <option value="nixpacks">Nixpacks (Auto-detect)</option>
+                <option value="dockerfile">Dockerfile</option>
+                <option value="heroku">Heroku Buildpacks</option>
+                <option value="static">Static Site</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1.5">Build Path</label>
+              <input value={buildPath} onChange={e => setBuildPath(e.target.value)}
+                className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-2.5 text-sm text-white font-mono placeholder:text-zinc-600 outline-none focus:border-blue-500/50 transition-all"
+                placeholder="/" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1.5">Install Command</label>
+              <input className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-2.5 text-sm text-white font-mono placeholder:text-zinc-600 outline-none focus:border-blue-500/50 transition-all"
+                placeholder="npm install" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1.5">Build Command</label>
+              <input value={buildCmd} onChange={e => setBuildCmd(e.target.value)}
+                className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-2.5 text-sm text-white font-mono placeholder:text-zinc-600 outline-none focus:border-blue-500/50 transition-all"
+                placeholder="npm run build" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1.5">Start Command</label>
+              <input value={startCmd} onChange={e => setStartCmd(e.target.value)}
+                className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-2.5 text-sm text-white font-mono placeholder:text-zinc-600 outline-none focus:border-blue-500/50 transition-all"
+                placeholder="node dist/index.js" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1.5">Port</label>
+              <input value={port} onChange={e => setPort(e.target.value)}
+                className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-2.5 text-sm text-white font-mono placeholder:text-zinc-600 outline-none focus:border-blue-500/50 transition-all"
+                placeholder="3000" type="number" />
+            </div>
+            <div className="flex items-center justify-between py-1">
+              <div>
+                <p className="text-sm font-medium text-zinc-300">Auto Deploy</p>
+                <p className="text-xs text-zinc-600">Deploy automatically on git push</p>
+              </div>
+              <button
+                onClick={() => setAutoDeploy(v => !v)}
+                className={cn('relative inline-flex h-5 w-9 rounded-full transition-colors', autoDeploy ? 'bg-blue-600' : 'bg-white/10')}
+              >
+                <span className={cn('absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform', autoDeploy && 'translate-x-4')} />
               </button>
             </div>
           </div>
+        </SectionCard>
 
-          {/* Danger zone */}
-          <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-5">
-            <p className="text-sm font-semibold text-red-400 mb-1">Danger Zone</p>
-            <p className="text-xs text-zinc-500 mb-4">Once you delete this application, there is no going back.</p>
+        <div className="flex justify-end">
+          <button
+            onClick={() => saveProviderMut.mutate()}
+            disabled={saveProviderMut.isPending || !repo}
+            className="flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-5 py-2.5 text-sm font-medium text-white transition-colors"
+          >
+            {saveProviderMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            Save & Deploy
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  function renderRuntime() {
+    return (
+      <div className="p-6 max-w-5xl mx-auto space-y-6">
+        {/* Container info */}
+        <SectionCard title="Container">
+          <InfoRow label="Status" value={<StatusBadge status={safeApp.applicationStatus} />} />
+          <InfoRow label="Image" value="—" mono />
+          <InfoRow label="Image Tag" value="latest" mono />
+          <InfoRow label="Restart Policy" value="Unless Stopped" />
+          <InfoRow label="Network" value="bridge" />
+          <InfoRow label="Port Mapping" value={port ? `0.0.0.0:${port}→${port}/tcp` : '—'} mono />
+        </SectionCard>
+
+        {/* Metrics */}
+        <div>
+          <h3 className="text-sm font-semibold text-white mb-3">Resource Usage</h3>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <MetricCard label="CPU" value="—" icon={Cpu} color="text-blue-400" comingSoon />
+            <MetricCard label="Memory" value="—" icon={MemoryStick} color="text-violet-400" comingSoon />
+            <MetricCard label="Disk" value="—" icon={HardDrive} color="text-emerald-400" comingSoon />
+            <MetricCard label="Bandwidth" value="—" icon={Wifi} color="text-amber-400" comingSoon />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderHealth() {
+    return (
+      <div className="p-6 max-w-3xl mx-auto space-y-6">
+        {/* Current status */}
+        <div className={cn(
+          'flex items-center gap-3 rounded-xl border px-5 py-4',
+          isRunning ? 'border-emerald-500/20 bg-emerald-500/5' :
+          safeApp.applicationStatus === 'error' ? 'border-red-500/20 bg-red-500/5' :
+          'border-white/5 bg-white/[0.02]'
+        )}>
+          {isRunning
+            ? <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+            : safeApp.applicationStatus === 'error'
+            ? <XCircle className="h-5 w-5 text-red-400" />
+            : <AlertCircle className="h-5 w-5 text-zinc-400" />}
+          <div>
+            <p className={cn('text-sm font-semibold',
+              isRunning ? 'text-emerald-400' : safeApp.applicationStatus === 'error' ? 'text-red-400' : 'text-zinc-400'
+            )}>
+              {isRunning ? 'Healthy' : safeApp.applicationStatus === 'error' ? 'Unhealthy' : 'Unknown'}
+            </p>
+            <p className="text-xs text-zinc-500 mt-0.5">Last checked just now</p>
+          </div>
+        </div>
+
+        <SectionCard title="Health Check Configuration">
+          <div className="py-4 space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1.5">Health Check URL</label>
+              <input value={healthUrl} onChange={e => setHealthUrl(e.target.value)}
+                className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-2.5 text-sm text-white font-mono placeholder:text-zinc-600 outline-none focus:border-blue-500/50 transition-all"
+                placeholder="/health" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Port</label>
+                <input value={healthPort} onChange={e => setHealthPort(e.target.value)}
+                  className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-2.5 text-sm text-white font-mono placeholder:text-zinc-600 outline-none focus:border-blue-500/50 transition-all"
+                  placeholder="3000" type="number" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Protocol</label>
+                <select className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50 transition-all">
+                  <option>HTTP</option>
+                  <option>HTTPS</option>
+                  <option>TCP</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Interval (s)</label>
+                <input value={healthInterval} onChange={e => setHealthInterval(e.target.value)}
+                  className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50" type="number" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Timeout (s)</label>
+                <input value={healthTimeout} onChange={e => setHealthTimeout(e.target.value)}
+                  className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50" type="number" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Retries</label>
+                <input value={healthRetries} onChange={e => setHealthRetries(e.target.value)}
+                  className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50" type="number" />
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+
+        <div className="flex justify-end">
+          <button className="flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-500 px-5 py-2.5 text-sm font-medium text-white transition-colors">
+            Save Configuration
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  function renderSettings() {
+    return (
+      <div className="p-6 max-w-3xl mx-auto space-y-6">
+        <SectionCard title="General">
+          <div className="py-4 space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1.5">Service Name</label>
+              <input defaultValue={safeApp.name}
+                className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-2.5 text-sm text-white placeholder:text-zinc-600 outline-none focus:border-blue-500/50 transition-all" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1.5">Description</label>
+              <textarea rows={2}
+                className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-2.5 text-sm text-white placeholder:text-zinc-600 outline-none focus:border-blue-500/50 transition-all resize-none"
+                placeholder="Optional description..." />
+            </div>
+          </div>
+        </SectionCard>
+
+        {/* Danger zone */}
+        <div className="rounded-xl border border-red-500/20 bg-red-500/5 overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-red-500/20">
+            <h3 className="text-sm font-semibold text-red-400">Danger Zone</h3>
+          </div>
+          <div className="px-5 py-4 space-y-3">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-zinc-200">Delete Service</p>
+                <p className="text-xs text-zinc-500 mt-0.5">Permanently delete this service and all deployment history.</p>
+              </div>
+              <button
+                onClick={() => setShowDeleteApp(true)}
+                className="flex-shrink-0 rounded-lg border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 px-4 py-2 text-sm font-medium text-red-400 transition-colors"
+              >
+                Delete Service
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const tabContent: Record<TabId, React.ReactNode> = {
+    Overview: renderOverview(),
+    Deployments: renderDeployments(),
+    Logs: renderLogs(),
+    Environment: (
+      <div className="p-6 max-w-3xl mx-auto">
+        <EnvironmentVariables
+          initialEnv={safeApp.env ?? ''}
+          onSave={(env) => saveEnvMut.mutateAsync(env)}
+          isPending={saveEnvMut.isPending}
+        />
+      </div>
+    ),
+    Domains: (
+      <div className="p-6 max-w-3xl mx-auto">
+        <DomainsList
+          domains={domains ?? []}
+          isLoading={false}
+          onAdd={(payload) => addDomainMut.mutateAsync(payload)}
+          onDelete={(id) => removeDomainMut.mutateAsync(id)}
+          isAdding={addDomainMut.isPending}
+        />
+      </div>
+    ),
+    Build: renderBuild(),
+    Runtime: renderRuntime(),
+    Health: renderHealth(),
+    Settings: renderSettings(),
+  };
+
+  return (
+    <div className="flex flex-col min-h-screen">
+      {/* Page header */}
+      <div className="px-6 py-5 border-b border-white/5">
+        {project && (
+          <Link href={`/projects/${project.projectId}`}
+            className="inline-flex items-center gap-1.5 text-xs text-zinc-500 hover:text-white transition-colors mb-3">
+            <ArrowLeft className="h-3 w-3" />
+            {project.name}
+          </Link>
+        )}
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <ServiceTypeIcon name={safeApp.name} buildType={safeApp.buildType} size="lg" />
+            <div>
+              <div className="flex items-center gap-2.5">
+                <h1 className="text-xl font-bold text-white">{safeApp.name}</h1>
+                <StatusBadge status={safeApp.applicationStatus} />
+              </div>
+              {safeApp.repository && (
+                <p className="text-sm text-zinc-500 flex items-center gap-2 mt-0.5">
+                  <GitFork className="h-3.5 w-3.5" />
+                  {safeApp.repository}
+                  {safeApp.branch && (
+                    <span className="flex items-center gap-1">
+                      <GitBranch className="h-3 w-3" />
+                      {safeApp.branch}
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Header action buttons */}
+          <div className="flex items-center gap-2 flex-shrink-0">
             <button
-              onClick={() => setShowDeleteApp(true)}
-              className="flex items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 hover:bg-red-500/20 px-4 py-2 text-xs font-medium text-red-400 transition-colors"
+              onClick={() => queryClient.invalidateQueries({ queryKey: ['projects'] })}
+              className="h-9 w-9 flex items-center justify-center rounded-lg border border-white/8 text-zinc-400 hover:text-white hover:bg-white/5 transition-colors"
             >
-              <Trash2 className="h-3.5 w-3.5" />
-              Delete Application
+              <RefreshCw className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => deployMut.mutate()}
+              disabled={deployMut.isPending || isBuilding}
+              className="flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-2 text-sm font-medium text-white transition-colors"
+            >
+              {deployMut.isPending || isBuilding
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <Rocket className="h-4 w-4" />}
+              {isBuilding ? 'Building...' : 'Deploy'}
             </button>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Delete confirm */}
+      {/* Tab navigation */}
+      <TabNav
+        tabs={TABS.map(t => ({
+          id: t.id,
+          label: t.label,
+          badge: t.id === 'Deployments' ? (deployments as Deployment[] | undefined)?.length : undefined,
+        }))}
+        active={activeTab}
+        onChange={(id) => setActiveTab(id as TabId)}
+      />
+
+      {/* Tab content */}
+      <div className="flex-1 overflow-auto">
+        {tabContent[activeTab]}
+      </div>
+
       <ConfirmDialog
         open={showDeleteApp}
-        onOpenChange={setShowDeleteApp}
-        title={`Delete ${app.name}`}
-        description="This will permanently delete this application and all its deployments. This action cannot be undone."
+        onOpenChange={(open) => !open && setShowDeleteApp(false)}
+        title="Delete Service"
+        description={`This will permanently delete "${safeApp.name}" and all its deployment history. This action cannot be undone.`}
         onConfirm={() => deleteMut.mutate()}
         loading={deleteMut.isPending}
       />
