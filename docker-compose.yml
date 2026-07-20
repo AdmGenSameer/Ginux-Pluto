@@ -5,24 +5,12 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    ports:
-      - "3001:3001"
     environment:
       - NODE_ENV=production
       - PORT=3001
       - DOKPLOY_URL=${DOKPLOY_URL}
       - DOKPLOY_TOKEN=${DOKPLOY_TOKEN}
     restart: unless-stopped
-    labels:
-      - traefik.docker.network=dokploy-network
-      - traefik.http.routers.clouddeploy-pluto-backend.rule=Host(`bknd-api.ginux.dev`)
-      - traefik.http.routers.clouddeploy-pluto-backend.entrypoints=web
-      - traefik.http.services.clouddeploy-pluto-backend.loadbalancer.server.port=3001
-      - traefik.http.routers.clouddeploy-pluto-backend.service=clouddeploy-pluto-backend
-      - traefik.enable=true
-    networks:
-      - dokploy-network
-      - default
 
   frontend:
     build:
@@ -30,8 +18,6 @@ services:
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-    ports:
-      - "3002:3002"
     environment:
       - NODE_ENV=production
       - PORT=3002
@@ -39,17 +25,3 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
-    labels:
-      - traefik.docker.network=dokploy-network
-      - traefik.http.routers.clouddeploy-pluto-frontend.rule=Host(`pluto.ginux.dev`)
-      - traefik.http.routers.clouddeploy-pluto-frontend.entrypoints=web
-      - traefik.http.services.clouddeploy-pluto-frontend.loadbalancer.server.port=3002
-      - traefik.http.routers.clouddeploy-pluto-frontend.service=clouddeploy-pluto-frontend
-      - traefik.enable=true
-    networks:
-      - dokploy-network
-      - default
-
-networks:
-  dokploy-network:
-    external: true
