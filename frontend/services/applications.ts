@@ -58,6 +58,11 @@ export const startApplication = async (applicationId: string) => {
   return data;
 };
 
+export const removeDeployment = async (deploymentId: string) => {
+  const { data } = await api.delete(`/deployments/${deploymentId}`);
+  return data;
+};
+
 export const updateApplicationSettings = async (applicationId: string, settings: ApplicationSettings) => {
   const { data } = await api.put(`/applications/${applicationId}/settings`, settings);
   return data;

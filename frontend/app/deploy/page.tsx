@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
+import { cn } from "@/lib/utils";
 import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { getProjects, createProject, type DokployProject } from '@/services/projects';
-import { createApplication, saveProvider } from '@/services/applications';
-import { deployApplication } from '@/services/applications';
+import { createApplication, saveProvider, deployApplication } from '@/services/applications';
 import { getRepositories, getBranches } from '@/services/github';
-import { ArrowLeft, ArrowRight, Check, FolderOpen, GitFork, GitBranch, Settings, Rocket, Loader2, Box } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, FolderOpen, GitFork, GitBranch, Settings, Rocket, Loader2, Box, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -296,17 +296,45 @@ export default function DeployWizard() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-zinc-400 mb-1.5">Build Type</label>
-                  <select
-                    value={buildType}
-                    onChange={(e) => setBuildType(e.target.value as any)}
-                    className="w-full rounded-lg border border-white/10 bg-[#111] px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500 transition-all"
-                  >
-                    <option value="nixpacks">Nixpacks (Automatic)</option>
-                    <option value="dockerfile">Dockerfile</option>
-                    <option value="heroku">Heroku Buildpacks</option>
-                    <option value="paketo">Paketo Buildpacks</option>
-                  </select>
+                  <div className="flex items-start gap-3 p-4 mb-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                    <Info className="h-5 w-5 text-blue-400 mt-0.5 shrink-0" />
+                    <p className="text-sm text-blue-100/90 leading-relaxed">
+                      Builders can consume significant memory during the build process, ensure your server has enough resources. Some builders are suitable for development but may not be optimal for production environments.
+                    </p>
+                  </div>
+                  <label className="block text-sm font-semibold text-white mb-3">Build Type</label>
+                  <div className="flex flex-col gap-2">
+                    {[
+                      { id: 'dockerfile', label: 'Dockerfile' },
+                      { id: 'railpack', label: 'Railpack', badge: 'New' },
+                      { id: 'nixpacks', label: 'Nixpacks' },
+                      { id: 'heroku', label: 'Heroku Buildpacks' },
+                      { id: 'paketo', label: 'Paketo Buildpacks' },
+                      { id: 'static', label: 'Static' },
+                    ].map((option) => (
+                      <label key={option.id} className="flex items-center gap-3 cursor-pointer group">
+                        <div className="relative flex items-center justify-center">
+                          <input
+                            type="radio"
+                            name="buildType"
+                            value={option.id}
+                            checked={buildType === option.id}
+                            onChange={(e) => setBuildType(e.target.value as any)}
+                            className="peer sr-only"
+                          />
+                          <div className="w-5 h-5 rounded-full border border-white/20 bg-transparent peer-checked:border-blue-500 flex items-center justify-center transition-colors group-hover:border-white/40 peer-checked:group-hover:border-blue-400">
+                            <div className={cn("w-2.5 h-2.5 rounded-full bg-blue-500 transition-all", buildType === option.id ? "scale-100 opacity-100" : "scale-0 opacity-0")}></div>
+                          </div>
+                        </div>
+                        <span className="text-sm text-zinc-200">{option.label}</span>
+                        {option.badge && (
+                          <span className="px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-black bg-zinc-200 rounded-full">
+                            {option.badge}
+                          </span>
+                        )}
+                      </label>
+                    ))}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-zinc-400 mb-1.5">Build Path</label>

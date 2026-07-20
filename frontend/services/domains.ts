@@ -16,7 +16,17 @@ export const getDomains = async (applicationId: string): Promise<Domain[]> => {
 
 export const createDomain = async (
   applicationId: string,
-  payload: { host: string; https?: boolean; port?: number }
+  payload: { 
+    host: string; 
+    https?: boolean; 
+    port?: number;
+    path?: string;
+    internalPath?: string;
+    stripPath?: boolean;
+    customEntrypoint?: string;
+    certificateType?: string;
+    middlewares?: string;
+  }
 ) => {
   const { data } = await api.post(`/applications/${applicationId}/domains`, payload);
   return data;

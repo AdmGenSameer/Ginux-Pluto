@@ -6,7 +6,19 @@ const router = Router();
 // ── Projects ──────────────────────────────────────
 router.get('/projects', c.getProjects);
 router.post('/projects', c.createProject);
+router.get('/projects/:id', c.getProject);
 router.delete('/projects/:id', c.deleteProject);
+router.put('/projects/:id', c.updateProject);
+router.post('/projects/duplicate', c.duplicateProject);
+// ── Compose ───────────────────────────────────────
+router.post('/compose', c.createCompose);
+router.get('/compose/:id', c.getCompose);
+router.put('/compose/:id', c.updateCompose);
+router.delete('/compose/:id', c.deleteCompose);
+router.post('/compose/:id/deploy', c.deployCompose);
+router.post('/compose/:id/redeploy', c.redeployCompose);
+router.post('/compose/:id/stop', c.stopCompose);
+router.post('/compose/:id/start', c.startCompose);
 
 // ── Applications ──────────────────────────────────
 router.post('/applications', c.createApplication);
@@ -26,6 +38,7 @@ router.get('/applications/:id/deployments', c.getDeployments);
 router.get('/applications/:id/logs', c.getLogs); // Legacy
 router.get('/applications/:id/runtime-logs', c.getRuntimeLogs);
 router.get('/deployments/:deploymentId/logs', c.getDeploymentLogs);
+router.delete('/deployments/:deploymentId', c.removeDeployment);
 
 // ── Domains ───────────────────────────────────────
 router.get('/applications/:id/domains', c.getDomains);

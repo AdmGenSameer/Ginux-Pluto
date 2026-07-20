@@ -34,6 +34,113 @@ export const deleteProject = async (req: Request, res: Response) => {
   }
 };
 
+export const getProject = async (req: Request, res: Response) => {
+  try {
+    const project = await dokployService.getProject(req.params.id as string);
+    res.json(project);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to fetch project' });
+  }
+};
+
+export const updateProject = async (req: Request, res: Response) => {
+  try {
+    const project = await dokployService.updateProject(req.params.id as string, req.body);
+    res.json(project);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to update project' });
+  }
+};
+
+export const duplicateProject = async (req: Request, res: Response) => {
+  try {
+    const result = await dokployService.duplicateProject(req.body);
+    res.status(201).json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to duplicate project' });
+  }
+};
+
+// ─────────────────────────────────────────────
+// COMPOSE
+// ─────────────────────────────────────────────
+
+export const createCompose = async (req: Request, res: Response) => {
+  const { environmentId, name, description } = req.body;
+  if (!environmentId || !name) {
+    return res.status(400).json({ error: 'environmentId and name are required' });
+  }
+  try {
+    const compose = await dokployService.createCompose(name, environmentId, description);
+    res.status(201).json(compose);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to create compose' });
+  }
+};
+
+export const getCompose = async (req: Request, res: Response) => {
+  try {
+    const compose = await dokployService.getCompose(req.params.id as string);
+    res.json(compose);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to fetch compose' });
+  }
+};
+
+export const updateCompose = async (req: Request, res: Response) => {
+  try {
+    const compose = await dokployService.updateCompose(req.params.id as string, req.body);
+    res.json(compose);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to update compose' });
+  }
+};
+
+export const deleteCompose = async (req: Request, res: Response) => {
+  try {
+    await dokployService.deleteCompose(req.params.id as string);
+    res.json({ message: 'Compose deleted' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to delete compose' });
+  }
+};
+
+export const deployCompose = async (req: Request, res: Response) => {
+  try {
+    const compose = await dokployService.deployCompose(req.params.id as string);
+    res.json(compose);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to deploy compose' });
+  }
+};
+
+export const redeployCompose = async (req: Request, res: Response) => {
+  try {
+    const compose = await dokployService.redeployCompose(req.params.id as string);
+    res.json(compose);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to redeploy compose' });
+  }
+};
+
+export const stopCompose = async (req: Request, res: Response) => {
+  try {
+    const compose = await dokployService.stopCompose(req.params.id as string);
+    res.json(compose);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to stop compose' });
+  }
+};
+
+export const startCompose = async (req: Request, res: Response) => {
+  try {
+    const compose = await dokployService.startCompose(req.params.id as string);
+    res.json(compose);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to start compose' });
+  }
+};
+
 // ─────────────────────────────────────────────
 // APPLICATIONS
 // ─────────────────────────────────────────────
@@ -227,9 +334,8 @@ export const getDomains = async (req: Request, res: Response) => {
 
 export const createDomain = async (req: Request, res: Response) => {
   const id = req.params.id as string;
-  const { host, https, port } = req.body;
   try {
-    const domain = await dokployService.createDomain(id, host, https, port);
+    const domain = await dokployService.createDomain(id, req.body);
     res.status(201).json(domain);
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Failed to create domain' });
@@ -249,4 +355,13 @@ export const deleteDomain = async (req: Request, res: Response) => {
 // LEGACY COMPAT (keep old route handler names)
 // ─────────────────────────────────────────────
 export const deployProject = deployApplication;
+
+export const removeDeployment = async (req: Request, res: Response) => {
+  try {
+    await dokployService.removeDeployment(req.params.deploymentId as string);
+    res.json({ message: 'Deployment removed successfully' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to remove deployment' });
+  }
+};
 export const getStatus = async (req: Request, res: Response) => res.json({ status: 'unknown' });

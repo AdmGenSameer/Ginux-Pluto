@@ -5,7 +5,17 @@ import { Domain } from '@/services/domains';
 interface DomainsListProps {
   domains: Domain[];
   isLoading: boolean;
-  onAdd: (domain: { host: string; https: boolean; port: number }) => Promise<void>;
+  onAdd: (domain: { 
+    host: string; 
+    https: boolean; 
+    port: number;
+    path: string;
+    internalPath: string;
+    stripPath: boolean;
+    customEntrypoint: string;
+    certificateType: string;
+    middlewares: string;
+  }) => Promise<void>;
   onDelete: (domainId: string) => Promise<void>;
   isAdding: boolean;
 }
@@ -13,18 +23,37 @@ interface DomainsListProps {
 export function DomainsList({ domains, isLoading, onAdd, onDelete, isAdding }: DomainsListProps) {
   const [showAdd, setShowAdd] = useState(false);
   const [host, setHost] = useState('');
+  const [path, setPath] = useState('/');
+  const [internalPath, setInternalPath] = useState('/');
+  const [stripPath, setStripPath] = useState(false);
+  const [port, setPort] = useState(3000);
+  const [customEntrypointStr, setCustomEntrypointStr] = useState('');
+  const [useCustomEntrypoint, setUseCustomEntrypoint] = useState(false);
   const [https, setHttps] = useState(true);
-  const [port, setPort] = useState(80);
+  const [certificateType, setCertificateType] = useState('letsencrypt');
+  const [middlewares, setMiddlewares] = useState('');
   
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const handleAdd = async () => {
     if (!host.trim()) return;
     try {
-      await onAdd({ host, https, port });
+      await onAdd({ 
+        host, https, port, path, internalPath, stripPath, 
+        customEntrypoint: useCustomEntrypoint ? customEntrypointStr : '', 
+        certificateType, middlewares 
+      });
       setShowAdd(false);
       setHost('');
-      setPort(80);
+      setPath('/');
+      setInternalPath('/');
+      setStripPath(false);
+      setPort(3000);
+      setUseCustomEntrypoint(false);
+      setCustomEntrypointStr('');
+      setHttps(true);
+      setCertificateType('letsencrypt');
+      setMiddlewares('');
     } catch {
       // Error handled by mutation
     }
@@ -47,51 +76,140 @@ export function DomainsList({ domains, isLoading, onAdd, onDelete, isAdding }: D
           <p className="text-sm text-zinc-400 mt-1">Manage custom domains routing to your application.</p>
         </div>
         <button
-          onClick={() => setShowAdd(true)}
+          onClick={() => setShowAdd(!showAdd)}
           className="flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-500 px-4 py-2 text-sm font-medium text-white transition-colors"
         >
-          <Plus className="h-4 w-4" />
-          Add Domain
+          {showAdd ? <Loader2 className="h-4 w-4 opacity-0 hidden" /> : <Plus className="h-4 w-4" />}
+          {showAdd ? 'Cancel' : 'Add Domain'}
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-[#050505]">
         {showAdd && (
-          <div className="mb-6 p-5 rounded-xl border border-blue-500/30 bg-blue-500/5 shadow-lg">
-            <h3 className="text-sm font-medium text-white mb-4">Add Custom Domain</h3>
-            <div className="grid grid-cols-12 gap-4 items-end">
-              <div className="col-span-6">
-                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Hostname</label>
+          <div className="mb-6 p-6 rounded-xl border border-blue-500/30 bg-blue-500/5 shadow-lg space-y-5">
+            <div>
+              <h3 className="text-sm font-medium text-white">Add Custom Domain</h3>
+              <p className="text-xs text-zinc-400 mt-1">Configure advanced routing for your application</p>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="col-span-1 md:col-span-2">
+                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Host</label>
                 <input
                   autoFocus
                   value={host}
                   onChange={(e) => setHost(e.target.value)}
-                  placeholder="api.example.com"
+                  placeholder="api.dokploy.com"
                   className="w-full rounded-lg border border-white/10 bg-[#0a0a0a] px-3 py-2 text-sm text-white placeholder:text-zinc-600 outline-none focus:border-blue-500 transition-all"
                 />
               </div>
-              <div className="col-span-3">
-                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Target Port</label>
+
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Path</label>
                 <input
-                  type="number"
-                  value={port}
-                  onChange={(e) => setPort(parseInt(e.target.value) || 80)}
-                  className="w-full rounded-lg border border-white/10 bg-[#0a0a0a] px-3 py-2 text-sm text-white outline-none focus:border-blue-500 transition-all"
+                  value={path}
+                  onChange={(e) => setPath(e.target.value)}
+                  placeholder="/"
+                  className="w-full rounded-lg border border-white/10 bg-[#0a0a0a] px-3 py-2 text-sm text-white placeholder:text-zinc-600 outline-none focus:border-blue-500 transition-all"
                 />
               </div>
-              <div className="col-span-3 pb-1">
-                <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={https}
-                    onChange={(e) => setHttps(e.target.checked)}
-                    className="w-4 h-4 rounded border-white/20 bg-white/5 text-blue-500 focus:ring-blue-500/20"
-                  />
-                  Enable HTTPS
-                </label>
+
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Internal Path</label>
+                <input
+                  value={internalPath}
+                  onChange={(e) => setInternalPath(e.target.value)}
+                  placeholder="/"
+                  className="w-full rounded-lg border border-white/10 bg-[#0a0a0a] px-3 py-2 text-sm text-white placeholder:text-zinc-600 outline-none focus:border-blue-500 transition-all"
+                />
               </div>
             </div>
-            <div className="flex items-center justify-end gap-3 mt-5 pt-4 border-t border-white/10">
+
+            <div className="flex items-center justify-between p-4 rounded-lg bg-white/5 border border-white/10">
+              <div>
+                <h4 className="text-sm font-medium text-white">Strip Path</h4>
+                <p className="text-xs text-zinc-400 mt-0.5">Remove the external path from the request before forwarding</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" className="sr-only peer" checked={stripPath} onChange={(e) => setStripPath(e.target.checked)} />
+                <div className="w-11 h-6 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1.5">Container Port</label>
+              <input
+                type="number"
+                value={port}
+                onChange={(e) => setPort(parseInt(e.target.value) || 80)}
+                placeholder="3000"
+                className="w-full rounded-lg border border-white/10 bg-[#0a0a0a] px-3 py-2 text-sm text-white placeholder:text-zinc-600 outline-none focus:border-blue-500 transition-all"
+              />
+              <p className="text-xs text-zinc-500 mt-1.5">The port where your application is running inside the container (e.g. 3000 for Node.js)</p>
+            </div>
+
+            <div className="flex flex-col gap-3 p-4 rounded-lg bg-white/5 border border-white/10">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-medium text-white">Custom Entrypoint</h4>
+                  <p className="text-xs text-zinc-400 mt-0.5">Use custom entrypoint for domain ("web" and/or "websecure" used by default)</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" className="sr-only peer" checked={useCustomEntrypoint} onChange={(e) => setUseCustomEntrypoint(e.target.checked)} />
+                  <div className="w-11 h-6 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
+              {useCustomEntrypoint && (
+                <div className="pt-2">
+                  <input
+                    value={customEntrypointStr}
+                    onChange={(e) => setCustomEntrypointStr(e.target.value)}
+                    placeholder="e.g. websecure"
+                    className="w-full rounded-lg border border-white/10 bg-[#0a0a0a] px-3 py-2 text-sm text-white placeholder:text-zinc-600 outline-none focus:border-blue-500 transition-all"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between p-4 rounded-lg bg-white/5 border border-white/10">
+              <div>
+                <h4 className="text-sm font-medium text-white">HTTPS</h4>
+                <p className="text-xs text-zinc-400 mt-0.5">Automatically provision SSL Certificate</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" className="sr-only peer" checked={https} onChange={(e) => setHttps(e.target.checked)} />
+                <div className="w-11 h-6 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+
+            {https && (
+              <div className="p-4 rounded-lg bg-[#0a0a0a] border border-white/10">
+                <label className="block text-xs font-medium text-zinc-400 mb-2">Certificate Provider</label>
+                <select
+                  value={certificateType}
+                  onChange={(e) => setCertificateType(e.target.value)}
+                  className="w-full rounded-lg border border-white/10 bg-[#050505] px-3 py-2 text-sm text-white outline-none focus:border-blue-500 transition-all appearance-none [&>option]:bg-[#0a0a0a]"
+                >
+                  <option value="letsencrypt">Let's Encrypt</option>
+                  <option value="none">None</option>
+                </select>
+                <p className="text-xs text-zinc-500 mt-2">Let's Encrypt auto-provisions a certificate automatically for this host.</p>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1.5">Middlewares</label>
+              <div className="flex gap-2">
+                <input
+                  value={middlewares}
+                  onChange={(e) => setMiddlewares(e.target.value)}
+                  placeholder="e.g., rate-limit@file, auth@file"
+                  className="flex-1 rounded-lg border border-white/10 bg-[#0a0a0a] px-3 py-2 text-sm text-white placeholder:text-zinc-600 outline-none focus:border-blue-500 transition-all"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-white/10">
               <button
                 onClick={() => setShowAdd(false)}
                 className="px-4 py-2 text-sm font-medium text-zinc-400 hover:text-white transition-colors"
@@ -103,8 +221,8 @@ export function DomainsList({ domains, isLoading, onAdd, onDelete, isAdding }: D
                 disabled={!host.trim() || isAdding}
                 className="flex items-center gap-2 rounded-lg bg-white text-black hover:bg-zinc-200 disabled:opacity-50 px-4 py-2 text-sm font-medium transition-colors"
               >
-                {isAdding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
-                Register Domain
+                {isAdding ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Create Domain
               </button>
             </div>
           </div>

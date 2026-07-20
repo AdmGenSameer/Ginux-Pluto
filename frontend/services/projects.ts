@@ -45,3 +45,18 @@ export const deleteProject = async (projectId: string) => {
   const { data } = await api.delete(`/projects/${projectId}`);
   return data;
 };
+
+export const getProject = async (projectId: string): Promise<DokployProject> => {
+  const { data } = await api.get(`/projects/${projectId}`);
+  return data;
+};
+
+export const updateProject = async (projectId: string, payload: { name?: string; description?: string; env?: string }) => {
+  const { data } = await api.put(`/projects/${projectId}`, payload);
+  return data;
+};
+
+export const duplicateProject = async (payload: { sourceEnvironmentId: string; name: string; description?: string; includeServices?: boolean; duplicateInSameProject?: boolean }) => {
+  const { data } = await api.post('/projects/duplicate', payload);
+  return data;
+};

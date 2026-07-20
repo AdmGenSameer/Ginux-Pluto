@@ -34,6 +34,123 @@ export const deleteProject = async (projectId: string) => {
   }
 };
 
+export const getProject = async (projectId: string) => {
+  try {
+    const inputPayload = JSON.stringify({ json: { projectId } });
+    const { data } = await dokployApi.get('/project.one', {
+      params: { input: inputPayload }
+    });
+    return data?.result?.data?.json;
+  } catch (error: any) {
+    console.error('Dokploy error getProject:', error?.response?.data || error.message);
+    throw new Error('Failed to get project');
+  }
+};
+
+export const updateProject = async (projectId: string, updates: { name?: string; description?: string; env?: string }) => {
+  try {
+    const { data } = await dokployRestApi.post('/project.update', { projectId, ...updates });
+    return data;
+  } catch (error: any) {
+    console.error('Dokploy error updateProject:', error?.response?.data || error.message);
+    throw new Error('Failed to update project');
+  }
+};
+
+export const duplicateProject = async (payload: { sourceEnvironmentId: string; name: string; description?: string; includeServices?: boolean; selectedServices?: any[]; duplicateInSameProject?: boolean }) => {
+  try {
+    const { data } = await dokployRestApi.post('/project.duplicate', payload);
+    return data;
+  } catch (error: any) {
+    console.error('Dokploy error duplicateProject:', error?.response?.data || error.message);
+    throw new Error('Failed to duplicate project');
+  }
+};
+
+// ─────────────────────────────────────────────
+// COMPOSE
+// ─────────────────────────────────────────────
+
+export const createCompose = async (name: string, environmentId: string, description: string = '') => {
+  try {
+    const { data } = await dokployRestApi.post('/compose.create', { name, environmentId, description });
+    return data;
+  } catch (error: any) {
+    console.error('Dokploy error createCompose:', error?.response?.data || error.message);
+    throw new Error('Failed to create compose');
+  }
+};
+
+export const getCompose = async (composeId: string) => {
+  try {
+    const { data } = await dokployApi.get('/compose.one', { params: { composeId } });
+    return data;
+  } catch (error: any) {
+    console.error('Dokploy error getCompose:', error?.response?.data || error.message);
+    throw new Error('Failed to get compose');
+  }
+};
+
+export const updateCompose = async (composeId: string, updates: any) => {
+  try {
+    const { data } = await dokployRestApi.post('/compose.update', { composeId, ...updates });
+    return data;
+  } catch (error: any) {
+    console.error('Dokploy error updateCompose:', error?.response?.data || error.message);
+    throw new Error('Failed to update compose');
+  }
+};
+
+export const deleteCompose = async (composeId: string) => {
+  try {
+    const { data } = await dokployRestApi.post('/compose.delete', { composeId, deleteVolumes: false });
+    return data;
+  } catch (error: any) {
+    console.error('Dokploy error deleteCompose:', error?.response?.data || error.message);
+    throw new Error('Failed to delete compose');
+  }
+};
+
+export const deployCompose = async (composeId: string) => {
+  try {
+    const { data } = await dokployRestApi.post('/compose.deploy', { composeId });
+    return data;
+  } catch (error: any) {
+    console.error('Dokploy error deployCompose:', error?.response?.data || error.message);
+    throw new Error('Failed to deploy compose');
+  }
+};
+
+export const redeployCompose = async (composeId: string) => {
+  try {
+    const { data } = await dokployRestApi.post('/compose.redeploy', { composeId });
+    return data;
+  } catch (error: any) {
+    console.error('Dokploy error redeployCompose:', error?.response?.data || error.message);
+    throw new Error('Failed to redeploy compose');
+  }
+};
+
+export const stopCompose = async (composeId: string) => {
+  try {
+    const { data } = await dokployRestApi.post('/compose.stop', { composeId });
+    return data;
+  } catch (error: any) {
+    console.error('Dokploy error stopCompose:', error?.response?.data || error.message);
+    throw new Error('Failed to stop compose');
+  }
+};
+
+export const startCompose = async (composeId: string) => {
+  try {
+    const { data } = await dokployRestApi.post('/compose.start', { composeId });
+    return data;
+  } catch (error: any) {
+    console.error('Dokploy error startCompose:', error?.response?.data || error.message);
+    throw new Error('Failed to start compose');
+  }
+};
+
 // ─────────────────────────────────────────────
 // APPLICATIONS
 // ─────────────────────────────────────────────
@@ -273,10 +390,21 @@ export const getDomains = async (applicationId: string) => {
   }
 };
 
-export const createDomain = async (applicationId: string, host: string, https: boolean = true, port: number = 3000) => {
+export const createDomain = async (applicationId: string, payload: any) => {
   try {
     const { data } = await dokployApi.post('/domain.create', {
-      json: { applicationId, host, https, port, certificateType: https ? 'letsencrypt' : 'none' }
+      json: { 
+        applicationId, 
+        host: payload.host, 
+        https: payload.https !== false, 
+        port: payload.port || 80, 
+        path: payload.path || '/',
+        internalPath: payload.internalPath || '/',
+        stripPath: !!payload.stripPath,
+        customEntrypoint: payload.customEntrypoint || null,
+        certificateType: payload.certificateType || (payload.https !== false ? 'letsencrypt' : 'none'),
+        middlewares: payload.middlewares ? payload.middlewares.split(',').map((s: string) => s.trim()).filter(Boolean) : []
+      }
     });
     return data?.result?.data?.json;
   } catch (error: any) {
@@ -287,10 +415,28 @@ export const createDomain = async (applicationId: string, host: string, https: b
 
 export const deleteDomain = async (domainId: string) => {
   try {
-    const { data } = await dokployApi.post('/domain.delete', { json: { domainId } });
-    return data?.result?.data?.json;
+    const { data } = await dokployApi.post('/domain.delete', {
+      json: { domainId }
+    });
+    return data;
   } catch (error: any) {
     console.error('Dokploy error deleteDomain:', error?.response?.data || error.message);
     throw new Error('Failed to delete domain');
+  }
+};
+
+// ─────────────────────────────────────────────
+// DEPLOYMENTS
+// ─────────────────────────────────────────────
+
+export const removeDeployment = async (deploymentId: string) => {
+  try {
+    const { data } = await dokployApi.post('/deployment.removeDeployment', {
+      json: { deploymentId }
+    });
+    return data;
+  } catch (error: any) {
+    console.error('Dokploy error removeDeployment:', error?.response?.data || error.message);
+    throw new Error('Failed to remove deployment');
   }
 };

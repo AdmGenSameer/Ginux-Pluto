@@ -2,7 +2,7 @@
 
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { type Deployment } from '@/services/deployments';
-import { GitCommit, RotateCcw, FileText, Download, Rocket, User, Clock, Zap } from 'lucide-react';
+import { GitCommit, RotateCcw, FileText, Download, Rocket, User, Clock, Zap, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow, format } from 'date-fns';
 
@@ -12,6 +12,7 @@ interface DeploymentRowProps {
   onViewLogs?: (id: string) => void;
   onRollback?: (id: string) => void;
   onRedeploy?: (id: string) => void;
+  onDelete?: (id: string) => void;
 }
 
 function getDuration(start?: string, end?: string): string {
@@ -33,7 +34,7 @@ function getTriggerIcon(source?: string) {
   }
 }
 
-export function DeploymentRow({ deployment, isLast, onViewLogs, onRollback, onRedeploy }: DeploymentRowProps) {
+export function DeploymentRow({ deployment, isLast, onViewLogs, onRollback, onRedeploy, onDelete }: DeploymentRowProps) {
   const isActive = deployment.status === 'running' || deployment.status === 'queued';
 
   return (
@@ -124,6 +125,15 @@ export function DeploymentRow({ deployment, isLast, onViewLogs, onRollback, onRe
             title="Rollback"
           >
             <RotateCcw className="h-3.5 w-3.5" />
+          </button>
+        )}
+        {onDelete && (
+          <button
+            onClick={() => onDelete(deployment.deploymentId)}
+            className="h-7 w-7 flex items-center justify-center rounded-md text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+            title="Delete Deployment"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
           </button>
         )}
       </div>

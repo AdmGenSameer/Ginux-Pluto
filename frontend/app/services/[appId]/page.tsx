@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import { getProjects, type DokployProject } from '@/services/projects';
 import {
   deployApplication, redeployApplication, stopApplication,
-  startApplication, deleteApplication, saveProvider, updateApplicationSettings,
+  startApplication, deleteApplication, saveProvider, updateApplicationSettings, removeDeployment
 } from '@/services/applications';
 import { getDeployments, getApplicationLogs, type Deployment, type LogEntry } from '@/services/deployments';
 import { saveEnv } from '@/services/environment';
@@ -28,7 +28,7 @@ import {
   Download, Search, ExternalLink, RotateCcw, Shield,
   Server, Cpu, MemoryStick, HardDrive, Wifi, Clock,
   CheckCircle2, XCircle, AlertCircle, ChevronRight,
-  Package, Layers, Activity, Zap, Radio,
+  Package, Layers, Activity, Zap, Radio, Info
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -241,6 +241,11 @@ export default function ServicePage() {
     onSuccess: () => { toast.success('Service deleted'); window.location.href = project ? `/projects/${project.projectId}` : '/projects'; },
     onError: () => toast.error('Delete failed'),
   });
+  const removeDeploymentMut = useMutation({
+    mutationFn: (deploymentId: string) => removeDeployment(deploymentId),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['deployments', appId] }); toast.success('Deployment removed'); },
+    onError: () => toast.error('Failed to remove deployment'),
+  });
   const saveProviderMut = useMutation({
     mutationFn: () => saveProvider(appId, { repository: repo, branch, buildType: buildType as any, buildPath }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['projects'] }); toast.success('Build settings saved'); },
@@ -252,7 +257,7 @@ export default function ServicePage() {
     onError: () => toast.error('Failed to save env vars'),
   });
   const addDomainMut = useMutation({
-    mutationFn: (payload: { host: string; https: boolean; port: number }) => createDomain(appId, payload),
+    mutationFn: (payload: any) => createDomain(appId, payload),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['domains', appId] }); toast.success('Domain added'); },
     onError: () => toast.error('Failed to add domain'),
   });
@@ -484,6 +489,11 @@ export default function ServicePage() {
                 isLast={i === deps.length - 1}
                 onViewLogs={() => setActiveTab('Logs')}
                 onRedeploy={() => redeployMut.mutate()}
+                onDelete={(id) => {
+                  if (confirm('Are you sure you want to delete this deployment history?')) {
+                    removeDeploymentMut.mutate(id);
+                  }
+                }}
               />
             ))}
           </div>
@@ -544,7 +554,7 @@ export default function ServicePage() {
               <select
                 value={repo}
                 onChange={e => setRepo(e.target.value)}
-                className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50 transition-all"
+                className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50 transition-all [&>option]:bg-[#0a0a0a]"
               >
                 <option value="">Select repository...</option>
                 {(repositories ?? []).map((r: any) => (
@@ -557,7 +567,7 @@ export default function ServicePage() {
               <select
                 value={branch}
                 onChange={e => setBranch(e.target.value)}
-                className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50 transition-all"
+                className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50 transition-all [&>option]:bg-[#0a0a0a]"
               >
                 <option value="">Select branch...</option>
                 {(branches ?? []).map((b: any) => (
@@ -571,17 +581,45 @@ export default function ServicePage() {
         <SectionCard title="Build Configuration">
           <div className="py-4 space-y-4">
             <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1.5">Build Type</label>
-              <select
-                value={buildType}
-                onChange={e => setBuildType(e.target.value)}
-                className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50 transition-all"
-              >
-                <option value="nixpacks">Nixpacks (Auto-detect)</option>
-                <option value="dockerfile">Dockerfile</option>
-                <option value="heroku">Heroku Buildpacks</option>
-                <option value="static">Static Site</option>
-              </select>
+              <div className="flex items-start gap-3 p-4 mb-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                <Info className="h-5 w-5 text-blue-400 mt-0.5 shrink-0" />
+                <p className="text-sm text-blue-100/90 leading-relaxed">
+                  Builders can consume significant memory during the build process, ensure your server has enough resources. Some builders are suitable for development but may not be optimal for production environments.
+                </p>
+              </div>
+              <label className="block text-sm font-semibold text-white mb-3">Build Type</label>
+              <div className="flex flex-col gap-2">
+                {[
+                  { id: 'dockerfile', label: 'Dockerfile' },
+                  { id: 'railpack', label: 'Railpack', badge: 'New' },
+                  { id: 'nixpacks', label: 'Nixpacks' },
+                  { id: 'heroku', label: 'Heroku Buildpacks' },
+                  { id: 'paketo', label: 'Paketo Buildpacks' },
+                  { id: 'static', label: 'Static' },
+                ].map((option) => (
+                  <label key={option.id} className="flex items-center gap-3 cursor-pointer group">
+                    <div className="relative flex items-center justify-center">
+                      <input
+                        type="radio"
+                        name="buildType"
+                        value={option.id}
+                        checked={buildType === option.id}
+                        onChange={(e) => setBuildType(e.target.value)}
+                        className="peer sr-only"
+                      />
+                      <div className="w-5 h-5 rounded-full border border-white/20 bg-transparent peer-checked:border-blue-500 flex items-center justify-center transition-colors group-hover:border-white/40 peer-checked:group-hover:border-blue-400">
+                        <div className={cn("w-2.5 h-2.5 rounded-full bg-blue-500 transition-all", buildType === option.id ? "scale-100 opacity-100" : "scale-0 opacity-0")}></div>
+                      </div>
+                    </div>
+                    <span className="text-sm text-zinc-200">{option.label}</span>
+                    {option.badge && (
+                      <span className="px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-black bg-zinc-200 rounded-full">
+                        {option.badge}
+                      </span>
+                    )}
+                  </label>
+                ))}
+              </div>
             </div>
             <div>
               <label className="block text-xs font-medium text-zinc-400 mb-1.5">Build Path</label>
@@ -710,7 +748,7 @@ export default function ServicePage() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-zinc-400 mb-1.5">Protocol</label>
-                <select className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50 transition-all">
+                <select className="w-full rounded-lg border border-white/8 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/50 transition-all [&>option]:bg-[#0a0a0a]">
                   <option>HTTP</option>
                   <option>HTTPS</option>
                   <option>TCP</option>
