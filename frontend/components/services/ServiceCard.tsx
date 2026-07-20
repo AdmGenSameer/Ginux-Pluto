@@ -3,16 +3,16 @@
 import Link from 'next/link';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { ServiceTypeIcon } from '@/components/shared/ServiceTypeIcon';
-import { type DokployApplication } from '@/services/projects';
-import { GitBranch, Globe, Clock, Rocket, FileText, Trash2, ExternalLink } from 'lucide-react';
+import { type UnifiedService } from '@/services/projects';
+import { GitBranch, Globe, Clock, Rocket, FileText, Trash2, ExternalLink, Box } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 
 interface ServiceCardProps {
-  app: DokployApplication;
+  app: UnifiedService;
   projectId: string;
-  onDelete?: (id: string) => void;
-  onRedeploy?: (id: string) => void;
+  onDelete?: (id: string, type: 'application' | 'compose') => void;
+  onRedeploy?: (id: string, type: 'application' | 'compose') => void;
   className?: string;
 }
 
@@ -22,7 +22,10 @@ export function ServiceCard({ app, projectId: _projectId, onDelete, onRedeploy, 
     ? formatDistanceToNow(createdAt, { addSuffix: true })
     : '—';
 
-  const isLive = app.applicationStatus === 'running' || app.applicationStatus === 'done';
+  const status = app._type === 'application' ? app.applicationStatus : app.composeStatus;
+  const isLive = status === 'running' || status === 'done';
+  const id = app._type === 'application' ? app.applicationId : app.composeId;
+  const linkHref = app._type === 'application' ? `/services/${id}` : `/compose/${id}`;
 
   return (
     <div
@@ -34,29 +37,38 @@ export function ServiceCard({ app, projectId: _projectId, onDelete, onRedeploy, 
       {/* Top section */}
       <div className="flex items-start justify-between p-4 pb-3">
         <div className="flex items-center gap-3 min-w-0">
-          <ServiceTypeIcon name={app.name} buildType={app.buildType} size="md" />
+          <ServiceTypeIcon name={app.name} buildType={app._type === 'application' ? app.buildType : 'docker'} size="md" />
           <div className="min-w-0">
             <p className="text-sm font-semibold text-white truncate">{app.name}</p>
-            {app.repository && (
+            {app._type === 'application' && app.repository && (
               <p className="text-xs text-zinc-500 truncate mt-0.5">{app.repository}</p>
+            )}
+            {app._type === 'compose' && (
+              <p className="text-xs text-zinc-500 truncate mt-0.5 capitalize">{app.composeType || 'docker-compose'}</p>
             )}
           </div>
         </div>
-        <StatusBadge status={app.applicationStatus} />
+        <StatusBadge status={status} />
       </div>
 
       {/* Meta */}
       <div className="flex flex-col gap-1.5 px-4 pb-4 flex-1">
-        {app.branch && (
+        {app._type === 'application' && app.branch && (
           <div className="flex items-center gap-1.5 text-xs text-zinc-500">
             <GitBranch className="h-3 w-3 flex-shrink-0" />
             <span className="truncate">{app.branch}</span>
           </div>
         )}
-        {app.buildType && (
+        {app._type === 'application' && app.buildType && (
           <div className="flex items-center gap-1.5 text-xs text-zinc-500">
             <Rocket className="h-3 w-3 flex-shrink-0" />
             <span className="capitalize">{app.buildType}</span>
+          </div>
+        )}
+        {app._type === 'compose' && (
+          <div className="flex items-center gap-1.5 text-xs text-zinc-500">
+            <Box className="h-3 w-3 flex-shrink-0" />
+            <span>Docker Compose</span>
           </div>
         )}
         <div className="flex items-center gap-1.5 text-xs text-zinc-600">
@@ -68,7 +80,7 @@ export function ServiceCard({ app, projectId: _projectId, onDelete, onRedeploy, 
       {/* Footer actions */}
       <div className="flex items-center justify-between border-t border-white/5 px-3 py-2 bg-white/[0.01]">
         <div className="flex items-center gap-0.5">
-          <Link href={`/services/${app.applicationId}`}>
+          <Link href={linkHref}>
             <button
               title="Settings"
               className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
@@ -80,7 +92,7 @@ export function ServiceCard({ app, projectId: _projectId, onDelete, onRedeploy, 
           {onRedeploy && (
             <button
               title="Redeploy"
-              onClick={() => onRedeploy(app.applicationId)}
+              onClick={() => onRedeploy(id, app._type)}
               className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-zinc-400 hover:text-blue-400 hover:bg-blue-500/10 transition-colors"
             >
               <Rocket className="h-3 w-3" />
@@ -99,7 +111,7 @@ export function ServiceCard({ app, projectId: _projectId, onDelete, onRedeploy, 
         {onDelete && (
           <button
             title="Delete"
-            onClick={() => onDelete(app.applicationId)}
+            onClick={() => onDelete(id, app._type)}
             className="opacity-0 group-hover:opacity-100 flex items-center justify-center h-6 w-6 rounded-md text-zinc-600 hover:text-red-400 hover:bg-red-500/10 transition-all"
           >
             <Trash2 className="h-3 w-3" />

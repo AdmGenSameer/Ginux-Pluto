@@ -14,11 +14,26 @@ export interface DokployApplication {
   createdAt?: string;
 }
 
+export interface DokployCompose {
+  composeId: string;
+  name: string;
+  composeStatus: 'idle' | 'running' | 'error' | 'done' | 'stopped';
+  composeType?: 'docker-compose' | 'stack';
+  composeFile?: string;
+  createdAt?: string;
+  description?: string;
+}
+
+export type UnifiedService = 
+  | (DokployApplication & { _type: 'application' })
+  | (DokployCompose & { _type: 'compose' });
+
 export interface DokployEnvironment {
   environmentId: string;
   name: string;
   isDefault: boolean;
   applications: DokployApplication[];
+  composes?: DokployCompose[];
 }
 
 export interface DokployProject {

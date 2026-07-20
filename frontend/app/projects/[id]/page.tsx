@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
-import { getProjects, type DokployProject, type DokployApplication } from '@/services/projects';
+import { getProjects, type DokployProject, type DokployApplication, type UnifiedService } from '@/services/projects';
 import { createApplication, deleteApplication, redeployApplication } from '@/services/applications';
+import { createCompose, deleteCompose, redeployCompose } from '@/services/compose';
 import { ServiceCard } from '@/components/services/ServiceCard';
 import { ServiceRow } from '@/components/services/ServiceRow';
 import { StatsBar } from '@/components/shared/StatsBar';
@@ -29,8 +30,10 @@ export default function ProjectDetailPage() {
   const queryClient = useQueryClient();
 
   const [showCreate, setShowCreate] = useState(false);
+  const [newAppType, setNewAppType] = useState<'application' | 'compose'>('application');
   const [newAppName, setNewAppName] = useState('');
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [newAppDesc, setNewAppDesc] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; type: 'application' | 'compose' } | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
@@ -42,37 +45,67 @@ export default function ProjectDetailPage() {
 
   const project = projects?.find((p: DokployProject) => p.projectId === projectId);
   const environmentId = project?.environments?.[0]?.environmentId;
-  const allApps = project?.environments?.flatMap(e => e.applications ?? []) ?? [];
+  const applications = project?.environments?.flatMap(e => e.applications ?? []) ?? [];
+  const composes = project?.environments?.flatMap(e => e.composes ?? []) ?? [];
+  
+  const allServices: UnifiedService[] = [
+    ...applications.map(a => ({ ...a, _type: 'application' as const })),
+    ...composes.map(c => ({ ...c, _type: 'compose' as const })),
+  ];
 
-  const runningCount = allApps.filter(a => a.applicationStatus === 'running' || a.applicationStatus === 'done').length;
-  const errorCount = allApps.filter(a => a.applicationStatus === 'error').length;
-  const buildingCount = allApps.filter(a => a.applicationStatus === 'building').length;
+  const runningCount = allServices.filter(s => {
+    const status = s._type === 'application' ? s.applicationStatus : s.composeStatus;
+    return status === 'running' || status === 'done';
+  }).length;
+  const errorCount = allServices.filter(s => {
+    const status = s._type === 'application' ? s.applicationStatus : s.composeStatus;
+    return status === 'error';
+  }).length;
+  const buildingCount = allServices.filter(s => {
+    const status = s._type === 'application' ? s.applicationStatus : s.composeStatus;
+    return status === 'building';
+  }).length;
 
-  const filteredApps = allApps.filter(app => {
+  const filteredServices = allServices.filter(app => {
+    const repo = app._type === 'application' ? app.repository : '';
+    const status = app._type === 'application' ? app.applicationStatus : app.composeStatus;
     const matchesSearch = app.name.toLowerCase().includes(search.toLowerCase()) ||
-      (app.repository ?? '').toLowerCase().includes(search.toLowerCase());
+      (repo ?? '').toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter === 'All' ||
-      (statusFilter === 'Running' && (app.applicationStatus === 'running' || app.applicationStatus === 'done')) ||
-      (statusFilter === 'Building' && app.applicationStatus === 'building') ||
-      (statusFilter === 'Error' && app.applicationStatus === 'error') ||
-      (statusFilter === 'Stopped' && (app.applicationStatus === 'stopped' || app.applicationStatus === 'idle'));
+      (statusFilter === 'Running' && (status === 'running' || status === 'done')) ||
+      (statusFilter === 'Building' && status === 'building') ||
+      (statusFilter === 'Error' && status === 'error') ||
+      (statusFilter === 'Stopped' && (status === 'stopped' || status === 'idle'));
     return matchesSearch && matchesStatus;
   });
 
   const createMutation = useMutation({
-    mutationFn: (name: string) => createApplication({ projectId, environmentId: environmentId!, name }),
-    onSuccess: (data) => {
+    mutationFn: () => {
+      if (newAppType === 'application') {
+        return createApplication({ projectId, environmentId: environmentId!, name: newAppName.trim(), description: newAppDesc.trim() });
+      } else {
+        return createCompose({ environmentId: environmentId!, name: newAppName.trim(), description: newAppDesc.trim() });
+      }
+    },
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       setShowCreate(false);
       setNewAppName('');
-      if (data?.applicationId) window.location.href = `/services/${data.applicationId}`;
-      toast.success('Service created — configure it now');
+      setNewAppDesc('');
+      setNewAppType('application');
+      
+      const id = newAppType === 'application' ? data?.applicationId : data?.composeId;
+      const typePath = newAppType === 'application' ? 'services' : 'compose';
+      if (id) window.location.href = `/${typePath}/${id}`;
+      toast.success(`${newAppType === 'application' ? 'Service' : 'Compose'} created — configure it now`);
     },
-    onError: () => toast.error('Failed to create service'),
+    onError: () => toast.error(`Failed to create ${newAppType}`),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteApplication,
+    mutationFn: ({ id, type }: { id: string; type: 'application' | 'compose' }) => {
+      return type === 'application' ? deleteApplication(id) : deleteCompose(id);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       setDeleteTarget(null);
@@ -82,7 +115,9 @@ export default function ProjectDetailPage() {
   });
 
   const redeployMutation = useMutation({
-    mutationFn: redeployApplication,
+    mutationFn: ({ id, type }: { id: string; type: 'application' | 'compose' }) => {
+      return type === 'application' ? redeployApplication(id) : redeployCompose(id);
+    },
     onSuccess: () => toast.success('Redeploy triggered'),
     onError: () => toast.error('Failed to redeploy'),
   });
@@ -150,7 +185,7 @@ export default function ProjectDetailPage() {
       <StatsBar
         className="mb-8"
         stats={[
-          { label: 'Total Services', value: allApps.length, icon: Layers },
+          { label: 'Total Services', value: allServices.length, icon: Layers },
           { label: 'Running', value: runningCount, icon: Activity, valueColor: runningCount > 0 ? 'text-emerald-400' : undefined },
           { label: 'Failed', value: errorCount, icon: Activity, valueColor: errorCount > 0 ? 'text-red-400' : undefined },
           { label: 'Building', value: buildingCount, icon: Activity, valueColor: buildingCount > 0 ? 'text-blue-400' : undefined },
@@ -207,7 +242,7 @@ export default function ProjectDetailPage() {
       </div>
 
       {/* Services content */}
-      {filteredApps.length === 0 ? (
+      {filteredServices.length === 0 ? (
         <EmptyState
           icon={Box}
           title={search || statusFilter !== 'All' ? 'No services match your filters' : 'No services yet'}
@@ -217,25 +252,25 @@ export default function ProjectDetailPage() {
         />
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filteredApps.map((app: DokployApplication) => (
+          {filteredServices.map(app => (
             <ServiceCard
-              key={app.applicationId}
+              key={app._type === 'application' ? app.applicationId : app.composeId}
               app={app}
               projectId={projectId}
-              onDelete={setDeleteTarget}
-              onRedeploy={(id) => redeployMutation.mutate(id)}
+              onDelete={(id, type) => setDeleteTarget({ id, type })}
+              onRedeploy={(id, type) => redeployMutation.mutate({ id, type })}
             />
           ))}
         </div>
       ) : (
         <div className="rounded-xl border border-white/5 bg-white/[0.02] overflow-hidden">
-          {filteredApps.map((app: DokployApplication, idx) => (
+          {filteredServices.map((app, idx) => (
             <ServiceRow
-              key={app.applicationId}
+              key={app._type === 'application' ? app.applicationId : app.composeId}
               app={app}
-              isLast={idx === filteredApps.length - 1}
-              onDelete={setDeleteTarget}
-              onRedeploy={(id) => redeployMutation.mutate(id)}
+              isLast={idx === filteredServices.length - 1}
+              onDelete={(id, type) => setDeleteTarget({ id, type })}
+              onRedeploy={(id, type) => redeployMutation.mutate({ id, type })}
             />
           ))}
         </div>
@@ -244,30 +279,81 @@ export default function ProjectDetailPage() {
       {/* Create Service Modal */}
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#111] p-6 shadow-2xl">
-            <h2 className="text-base font-semibold text-white mb-1">New Service</h2>
-            <p className="text-xs text-zinc-500 mb-4">You can configure the repository and build settings after creation.</p>
-            <input
-              autoFocus
-              value={newAppName}
-              onChange={(e) => setNewAppName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && newAppName.trim() && createMutation.mutate(newAppName.trim())}
-              placeholder="Service name (e.g. api, frontend, worker)"
-              className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder:text-zinc-600 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition-all mb-4"
-            />
-            <div className="flex justify-end gap-2">
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#111] shadow-2xl overflow-hidden flex flex-col">
+            <div className="px-6 py-5 border-b border-white/5 bg-white/[0.02]">
+              <h2 className="text-lg font-semibold text-white">Create New Service</h2>
+              <p className="text-sm text-zinc-500 mt-1">Select the type of service you want to deploy.</p>
+            </div>
+            
+            <div className="p-6">
+              {/* Toggle Segment */}
+              <div className="flex p-1 bg-black/40 rounded-lg border border-white/5 mb-6">
+                <button
+                  onClick={() => setNewAppType('application')}
+                  className={cn(
+                    "flex-1 py-2 text-sm font-medium rounded-md transition-all",
+                    newAppType === 'application' ? "bg-blue-500/10 text-blue-400 border border-blue-500/20 shadow-sm" : "text-zinc-500 hover:text-zinc-300"
+                  )}
+                >
+                  Application
+                </button>
+                <button
+                  onClick={() => setNewAppType('compose')}
+                  className={cn(
+                    "flex-1 py-2 text-sm font-medium rounded-md transition-all",
+                    newAppType === 'compose' ? "bg-purple-500/10 text-purple-400 border border-purple-500/20 shadow-sm" : "text-zinc-500 hover:text-zinc-300"
+                  )}
+                >
+                  Docker Compose
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1.5 uppercase tracking-wider">Service Name</label>
+                  <input
+                    autoFocus
+                    value={newAppName}
+                    onChange={(e) => setNewAppName(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && newAppName.trim() && createMutation.mutate()}
+                    placeholder="e.g. frontend, api, worker"
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-zinc-600 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1.5 uppercase tracking-wider">Description <span className="text-zinc-600 normal-case">(optional)</span></label>
+                  <input
+                    value={newAppDesc}
+                    onChange={(e) => setNewAppDesc(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && newAppName.trim() && createMutation.mutate()}
+                    placeholder="Briefly describe this service..."
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-zinc-600 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition-all"
+                  />
+                </div>
+                {newAppType === 'application' ? (
+                  <p className="text-xs text-zinc-500">You can configure the repository, build type, and environment variables after creation.</p>
+                ) : (
+                  <p className="text-xs text-zinc-500">You can paste your raw docker-compose.yml file after creation.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-white/5 bg-white/[0.02] flex justify-end gap-3">
               <button
-                onClick={() => { setShowCreate(false); setNewAppName(''); }}
-                className="px-4 py-2 text-sm text-zinc-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
+                onClick={() => { setShowCreate(false); setNewAppName(''); setNewAppDesc(''); setNewAppType('application'); }}
+                className="px-4 py-2 text-sm font-medium text-zinc-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
               >
                 Cancel
               </button>
               <button
-                onClick={() => newAppName.trim() && createMutation.mutate(newAppName.trim())}
+                onClick={() => newAppName.trim() && createMutation.mutate()}
                 disabled={!newAppName.trim() || createMutation.isPending || !environmentId}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg transition-colors"
+                className={cn(
+                  "px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50",
+                  newAppType === 'application' ? "bg-blue-600 hover:bg-blue-500" : "bg-purple-600 hover:bg-purple-500"
+                )}
               >
-                {createMutation.isPending ? 'Creating...' : 'Create Service'}
+                {createMutation.isPending ? 'Creating...' : `Create ${newAppType === 'application' ? 'Application' : 'Compose'}`}
               </button>
             </div>
           </div>
