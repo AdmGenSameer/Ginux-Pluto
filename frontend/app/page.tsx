@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Box, Rocket } from 'lucide-react';
+import { Rocket } from 'lucide-react';
 import { toast } from 'sonner';
+import Image from 'next/image';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -37,10 +38,10 @@ export default function LoginPage() {
       <div className="relative w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 mb-4">
-            <Box className="h-6 w-6 text-white" />
+          <div className="inline-flex items-center justify-center mb-4">
+            <Image src="/logo.png" alt="Pluto" width={80} height={40} className="object-contain" />
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">CloudDeploy</h1>
+          <h1 className="text-2xl font-bold text-white tracking-tight">Pluto</h1>
           <p className="text-sm text-zinc-500 mt-1">Deploy applications in seconds</p>
         </div>
 
@@ -91,7 +92,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-zinc-600 mt-4">
-          CloudDeploy — Powered by Dokploy
+          Pluto — By Ginux Technologies
         </p>
       </div>
     </div>

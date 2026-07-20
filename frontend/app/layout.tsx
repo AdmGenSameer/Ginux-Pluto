@@ -7,8 +7,8 @@ import { Toaster } from '@/components/ui/sonner';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'CloudDeploy',
-  description: 'Deploy applications in one click.',
+  title: 'Pluto by Ginux',
+  description: 'Deploy applications in one click. By Ginux Technologies.',
 };
 
 export default function RootLayout({

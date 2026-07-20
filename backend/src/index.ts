@@ -27,6 +27,6 @@ app.post('/api/login', (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log(`CloudDeploy Backend API Gateway listening at http://localhost:${port}`);
+  console.log(`Pluto by Ginux Technologies — API Gateway listening at http://localhost:${port}`);
   console.log(`Connected to Dokploy at: ${process.env.DOKPLOY_URL || 'http://localhost:3000'}`);
 });

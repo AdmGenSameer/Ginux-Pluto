@@ -6,15 +6,14 @@ import {
   LayoutDashboard,
   FolderOpen,
   Layers,
-  GitFork,
   Settings,
-  Box,
   ChevronLeft,
   ChevronRight,
   Rocket,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
+import Image from 'next/image';
 
 const navItems = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -42,11 +41,14 @@ export function Sidebar() {
     >
       {/* Logo */}
       <div className={cn('flex items-center gap-3 px-4 py-5 border-b border-white/5', collapsed && 'justify-center')}>
-        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-blue-600">
-          <Box className="h-4 w-4 text-white" />
+        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg overflow-hidden">
+          <Image src="/logo.png" alt="Pluto" width={32} height={32} className="object-contain" />
         </div>
         {!collapsed && (
-          <span className="text-sm font-semibold tracking-tight text-white">CloudDeploy</span>
+          <div className="min-w-0">
+            <span className="text-sm font-semibold tracking-tight text-white">Pluto</span>
+            <p className="text-[9px] text-zinc-500 leading-none mt-0.5">by Ginux Technologies</p>
+          </div>
         )}
       </div>
 
@@ -110,12 +112,12 @@ export function Sidebar() {
 
         {/* User */}
         <div className={cn('flex items-center gap-3 rounded-lg px-3 py-2 mt-1', collapsed && 'justify-center')}>
-          <div className="h-7 w-7 flex-shrink-0 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white">
-            CD
+          <div className="h-7 w-7 flex-shrink-0 rounded-full overflow-hidden bg-[#111]">
+            <Image src="/logo.png" alt="Pluto" width={28} height={28} className="object-contain" />
           </div>
           {!collapsed && (
             <div className="min-w-0">
-              <p className="text-xs font-medium text-white truncate">CloudDeploy</p>
+              <p className="text-xs font-medium text-white truncate">Pluto</p>
               <p className="text-[10px] text-zinc-500 truncate">admin</p>
             </div>
           )}
